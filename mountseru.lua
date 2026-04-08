@@ -58,9 +58,8 @@ end
 -- t=2.86 -> (-3498.8, 640.3, 376.1)
 -- Offset 8 stud agar tidak overlap
 -- ══════════════════════════════
-local TARGET     = Vector3.new(-3498.8, 640.3, 376.1)
-local TARGET_NEAR = Vector3.new(-3498.8, 640.3, 384.1) -- offset +8 Z
-
+local TARGET     = Vector3.new(-3488.246, 640.331, 376.1)
+local TARGET_NEAR = Vector3.new(-3488.246, 640.331, 375.1) -- offset +8 Z
 local running  = false
 local statusCB = nil
 local antilagOn = false
