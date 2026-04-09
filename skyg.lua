@@ -1,241 +1,214 @@
---[[ SAKAHAYANG STEALTH UI — BALANCED VERSION ]]
+--[[ 
+  MOUNT SAKAHAYANG SCRIPT (2 CP VERSION)
+  BY ALFIAN (EDITED)
+]]
 
-local Players = game:GetService("Players")
-local UIS     = game:GetService("UserInputService")
-local PPS     = game:GetService("ProximityPromptService")
+local Players  = game:GetService("Players")
+local UIS      = game:GetService("UserInputService")
+local TweenSvc = game:GetService("TweenService")
+local player   = Players.LocalPlayer
 
-local player = Players.LocalPlayer
-
--- ================= CONFIG =================
-local CP = {
-	Vector3.new(-313.5,653.1,-945.6),
-	Vector3.new(4357.5,2237.1,-9544.7)
-}
-
-local running = false
-local mode = "SIMPLE" -- SIMPLE / FLEX
-local activePrompt = nil
-local currentCP = 0
-
--- ================= STATUS =================
-local statusLbl
-local function setStatus(t)
-	if statusLbl then statusLbl.Text = t end
-	print(t)
-end
-
--- ================= HUMAN TP =================
-local function humanTP(hrp, pos)
-	local offset = Vector3.new(math.random(-3,3),3,math.random(-3,3))
-	hrp.CFrame = CFrame.new(pos + offset)
-	task.wait(math.random(30,60)/100)
-end
-
--- ================= PROMPT FILTER =================
-local KEYWORDS = {"claim","ambil","reward","hadiah","redeem"}
-
-local function validPrompt(p)
-	local t1 = (p.ActionText or ""):lower()
-	local t2 = (p.ObjectText or ""):lower()
-	for _,k in ipairs(KEYWORDS) do
-		if t1:match(k) or t2:match(k) then
-			return true
-		end
-	end
-	return false
-end
-
--- ================= EVENT =================
-PPS.PromptShown:Connect(function(prompt)
-	if running and validPrompt(prompt) then
-		activePrompt = prompt
+pcall(function()
+	for _,g in ipairs(player.PlayerGui:GetChildren()) do
+		if g.Name=="SakahayangAlfian" then g:Destroy() end
 	end
 end)
 
--- ================= CLAIM =================
-local function tryClaim(hrp)
-	if not activePrompt then return false end
+-- ================= CP CONFIG =================
+local CP = {
+	[1] = {
+		TARGET = Vector3.new(-313.5,653.1,-945.6),
+		NEAR   = Vector3.new(-313.5,653.1,-940.6)
+	},
+	[2] = {
+		TARGET = Vector3.new(4362.3,2237.0,-9538.8),
+		NEAR   = Vector3.new(4362.3,2237.0,-9530.8)
+	}
+}
 
-	local part = activePrompt.Parent
-	if not part or not part:IsA("BasePart") then return false end
+local currentCP = 2
+local running = false
 
-	local dist = (part.Position - hrp.Position).Magnitude
-	if dist > 15 then return false end
+-- ================= COLORS =================
+local GR =Color3.fromRGB(150,255,170)
+local RD =Color3.fromRGB(220,70,70)
+local RD2=Color3.fromRGB(255,90,90)
+local YL =Color3.fromRGB(230,200,100)
+local WHT=Color3.fromRGB(230,230,230)
+local DIM=Color3.fromRGB(100,100,110)
+local PNL=Color3.fromRGB(12,12,16)
+local MID=Color3.fromRGB(18,18,24)
+local SRF=Color3.fromRGB(24,24,32)
+local BRD=Color3.fromRGB(36,36,48)
+local BRD2=Color3.fromRGB(55,55,72)
+local SIL=Color3.fromRGB(140,140,155)
+local DEEP=Color3.fromRGB(7,7,10)
+local GD =Color3.fromRGB(180,150,80)
 
-	hrp.CFrame = CFrame.new(part.Position + Vector3.new(0,2,0))
-	task.wait(math.random(20,40)/100)
+local SVl,SDot
 
-	pcall(function()
-		fireproximityprompt(activePrompt)
-	end)
-
-	return true
+local function setStatus(msg,col)
+	if not SVl then return end
+	SVl.Text=msg
+	local c=col=="done" and GR or col=="err" and RD2 or col=="wait" and YL or WHT
+	SVl.TextColor3=c
+	if SDot then SDot.BackgroundColor3=c end
 end
 
--- ================= RUN CP =================
-local function runCP(index)
+-- ================= TELEPORT =================
+local function teleportToCP(idx)
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp  = char:WaitForChild("HumanoidRootPart",5)
 	if not hrp then return end
 
-	currentCP = index
-	activePrompt = nil
+	local cp = CP[idx]
+	if not cp then return end
 
-	setStatus("➡️ CP "..index)
+	currentCP = idx
+	setStatus("TP CP "..idx,"wait")
 
-	humanTP(hrp, CP[index])
+	hrp.CFrame = CFrame.new(cp.NEAR + Vector3.new(0,5,0))
+end
 
-	local t = 0
-	repeat
-		task.wait(0.1)
-		t += 0.1
-	until (activePrompt or t > 3)
+-- ================= FIND PROMPT =================
+local function findPrompt()
+	local cp = CP[currentCP]
 
-	if activePrompt then
-		local ok = tryClaim(hrp)
-		if ok then
-			setStatus("✅ CLAIM CP "..index)
-		else
-			setStatus("⚠️ FAIL CP "..index)
+	for _,v in ipairs(workspace:GetDescendants()) do
+		if v:IsA("ProximityPrompt") then
+			local par=v.Parent
+			if par and par:IsA("BasePart") then
+				local pos=par.Position
+				if (pos - cp.TARGET).Magnitude < 120 then
+					return v,par
+				end
+			end
 		end
-	else
-		setStatus("❌ NO PROMPT CP "..index)
 	end
+	return nil,nil
 end
 
--- ================= AUTO =================
-local function runAll()
+-- ================= RUN =================
+local function runSequence()
 	if running then return end
-	running = true
+	running=true
 
-	for i=1,#CP do
-		if not running then break end
-		runCP(i)
-		task.wait(1)
-	end
+	task.spawn(function()
+		setStatus("CONNECTING","wait")
+		task.wait(0.2)
 
-	running = false
-	setStatus("🎯 DONE")
-end
+		local char=player.Character or player.CharacterAdded:Wait()
+		local hrp=char:WaitForChild("HumanoidRootPart",5)
+		if not hrp then setStatus("ERROR","err");running=false;return end
 
-local function stopRun()
-	running = false
-	setStatus("⛔ STOP")
-end
+		local cp = CP[currentCP]
 
--- ================= GUI =================
-local sg = Instance.new("ScreenGui", player.PlayerGui)
-sg.Name = "StealthUI"
+		setStatus("FAST TRAVEL CP"..currentCP,"wait")
+		hrp.CFrame = CFrame.new(cp.NEAR + Vector3.new(0,5,0))
+		task.wait(0.4)
 
-local F = Instance.new("Frame", sg)
-F.Size = UDim2.new(0,260,0,260)
-F.Position = UDim2.new(0.5,-130,0.5,-130)
-F.BackgroundColor3 = Color3.fromRGB(20,20,25)
-F.Active = true
-F.Draggable = true
-Instance.new("UICorner",F)
+		setStatus("SCAN CP"..currentCP,"wait")
+		local pr,obj = findPrompt()
 
--- TITLE
-local title = Instance.new("TextLabel",F)
-title.Size = UDim2.new(1,0,0,30)
-title.Text = "STEALTH SAKAHAYANG"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextSize = 12
+		if obj and obj:IsA("BasePart") then
+			local pos = obj.Position
+			hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
+			task.wait(0.2)
+		end
 
--- STATUS
-statusLbl = Instance.new("TextLabel",F)
-statusLbl.Size = UDim2.new(1,0,0,20)
-statusLbl.Position = UDim2.new(0,0,0,30)
-statusLbl.Text = "READY"
-statusLbl.TextColor3 = Color3.fromRGB(150,255,150)
-statusLbl.BackgroundTransparency = 1
-statusLbl.Font = Enum.Font.GothamBold
-statusLbl.TextSize = 10
+		setStatus("CLAIMING","wait")
 
--- MODE BUTTON
-local modeBtn = Instance.new("TextButton",F)
-modeBtn.Size = UDim2.new(1,-40,0,25)
-modeBtn.Position = UDim2.new(0,20,0,55)
-modeBtn.Text = "MODE: SIMPLE"
-modeBtn.BackgroundColor3 = Color3.fromRGB(80,80,120)
-modeBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner",modeBtn)
+		if pr then
+			for i=1,3 do
+				pcall(function()
+					fireproximityprompt(pr)
+				end)
+				task.wait(0.1)
+			end
+		end
 
-modeBtn.MouseButton1Click:Connect(function()
-	if mode == "SIMPLE" then
-		mode = "FLEX"
-		modeBtn.Text = "MODE: FLEX"
-	else
-		mode = "SIMPLE"
-		modeBtn.Text = "MODE: SIMPLE"
-	end
-end)
-
--- CP BUTTONS
-local cpBtns = {}
-
-for i=1,#CP do
-	local b = Instance.new("TextButton",F)
-	b.Size = UDim2.new(0.4,0,0,30)
-	b.Position = UDim2.new((i-1)*0.45+0.05,0,0,90)
-	b.Text = "CP "..i
-	b.BackgroundColor3 = Color3.fromRGB(40,40,40)
-	b.TextColor3 = Color3.new(1,1,1)
-	Instance.new("UICorner",b)
-
-	cpBtns[i] = b
-
-	b.MouseButton1Click:Connect(function()
-		if running or mode ~= "FLEX" then return end
-		runCP(i)
+		setStatus("DONE CP"..currentCP,"done")
+		running=false
 	end)
 end
 
--- RUN BUTTON
-local runBtn = Instance.new("TextButton",F)
-runBtn.Size = UDim2.new(1,-40,0,30)
-runBtn.Position = UDim2.new(0,20,0,140)
-runBtn.Text = "RUN AUTO"
-runBtn.BackgroundColor3 = Color3.fromRGB(200,200,200)
-runBtn.TextColor3 = Color3.new(0,0,0)
-Instance.new("UICorner",runBtn)
+-- ================= GUI =================
+local sg=Instance.new("ScreenGui",player.PlayerGui)
+sg.Name="SakahayangAlfian"
 
-runBtn.MouseButton1Click:Connect(function()
-	if mode == "SIMPLE" then
-		runAll()
-	end
+local F=Instance.new("Frame",sg)
+F.Size=UDim2.new(0,260,0,300)
+F.Position=UDim2.new(0,20,0,60)
+F.BackgroundColor3=PNL
+F.Active=true
+F.Draggable=true
+Instance.new("UICorner",F)
+
+-- TITLE
+local title=Instance.new("TextLabel",F)
+title.Size=UDim2.new(1,0,0,30)
+title.Text="MOUNT SAKAHAYANG"
+title.TextColor3=WHT
+title.BackgroundTransparency=1
+title.Font=Enum.Font.GothamBold
+title.TextSize=12
+
+-- STATUS
+SVl=Instance.new("TextLabel",F)
+SVl.Size=UDim2.new(1,0,0,20)
+SVl.Position=UDim2.new(0,0,0,30)
+SVl.Text="READY"
+SVl.TextColor3=GR
+SVl.BackgroundTransparency=1
+SVl.Font=Enum.Font.GothamBold
+SVl.TextSize=10
+
+-- START
+local startBtn=Instance.new("TextButton",F)
+startBtn.Size=UDim2.new(1,-40,0,30)
+startBtn.Position=UDim2.new(0,20,0,70)
+startBtn.Text="START RUN"
+startBtn.BackgroundColor3=WHT
+startBtn.TextColor3=DEEP
+Instance.new("UICorner",startBtn)
+
+startBtn.MouseButton1Click:Connect(function()
+	runSequence()
 end)
 
--- STOP BUTTON
-local stopBtn = Instance.new("TextButton",F)
-stopBtn.Size = UDim2.new(1,-40,0,30)
-stopBtn.Position = UDim2.new(0,20,0,180)
-stopBtn.Text = "STOP"
-stopBtn.BackgroundColor3 = Color3.fromRGB(120,50,50)
-stopBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner",stopBtn)
+-- CP BUTTONS
+local cp1=Instance.new("TextButton",F)
+cp1.Size=UDim2.new(0.4,0,0,30)
+cp1.Position=UDim2.new(0.05,0,0,120)
+cp1.Text="TP CP1"
+cp1.BackgroundColor3=SRF
+cp1.TextColor3=WHT
+Instance.new("UICorner",cp1)
 
-stopBtn.MouseButton1Click:Connect(stopRun)
+local cp2=Instance.new("TextButton",F)
+cp2.Size=UDim2.new(0.4,0,0,30)
+cp2.Position=UDim2.new(0.55,0,0,120)
+cp2.Text="TP CP2"
+cp2.BackgroundColor3=SRF
+cp2.TextColor3=WHT
+Instance.new("UICorner",cp2)
 
--- CLOSE
-local closeBtn = Instance.new("TextButton",F)
-closeBtn.Size = UDim2.new(0,25,0,25)
-closeBtn.Position = UDim2.new(1,-30,0,5)
-closeBtn.Text = "X"
-closeBtn.BackgroundColor3 = Color3.fromRGB(80,30,30)
-closeBtn.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner",closeBtn)
-
-closeBtn.MouseButton1Click:Connect(function()
-	F:Destroy()
+cp1.MouseButton1Click:Connect(function()
+	if running then return end
+	teleportToCP(1)
 end)
 
--- TOGGLE
+cp2.MouseButton1Click:Connect(function()
+	if running then return end
+	teleportToCP(2)
+end)
+
+-- TOGGLE UI
 UIS.InputBegan:Connect(function(inp,gpe)
 	if gpe then return end
-	if inp.KeyCode == Enum.KeyCode.F9 then
+	if inp.KeyCode==Enum.KeyCode.F9 then
 		F.Visible = not F.Visible
 	end
 end)
+
+print("Mount Sakahayang 2CP Loaded")
