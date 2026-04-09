@@ -38,8 +38,18 @@ local function applyAntiLag()
     end)
 end
 
-local TARGET = Vector3.new(4362.3, 2237.0, -9538.8)
-local NEAR   = Vector3.new(4362.3, 2237.0, -9530.8)
+-- DATA KOORDINAT (Updated)
+local LOCATIONS = {
+    [1] = {
+        TARGET = Vector3.new(-312.329, 654.005, -952.673),
+        NEAR   = Vector3.new(-307.023, 653.096, -957.354)
+    },
+    [2] = {
+        TARGET = Vector3.new(4356.271, 2238.856, -9533.901),
+        NEAR   = Vector3.new(4353.229, 2237.096, -9544.040)
+    }
+}
+
 local running = false
 
 local GR =Color3.fromRGB(150,255,170)
@@ -66,7 +76,7 @@ local function setStatus(msg,col)
     if SDot then SDot.BackgroundColor3=c end
 end
 
-local function findPrompt()
+local function findPrompt(targetPos)
     for _,v in ipairs(workspace:GetDescendants()) do
         if v.Name=="ProxyAttachment" then
             local pr=v:FindFirstChildOfClass("ProximityPrompt")
@@ -98,7 +108,7 @@ local function findPrompt()
                     local pp=par.PrimaryPart or par:FindFirstChildWhichIsA("BasePart")
                     pos=pp and pp.Position
                 end
-                if pos and (pos-TARGET).Magnitude<120 then return v,par end
+                if pos and (pos-targetPos).Magnitude<120 then return v,par end
             end
         end
     end
@@ -116,11 +126,14 @@ local function getObjPos(obj)
     return nil
 end
 
-local function runSequence()
+local function runSequence(index)
     if running then return end
+    local data = LOCATIONS[index]
+    if not data then return end
+    
     running=true
     task.spawn(function()
-        setStatus("CONNECTING","wait"); task.wait(0.15)
+        setStatus("CONNECTING CP"..index,"wait"); task.wait(0.15)
         local char=player.Character or player.CharacterAdded:Wait()
         local hrp=char:WaitForChild("HumanoidRootPart",5)
         if not hrp then setStatus("ERROR","err");running=false;return end
@@ -128,14 +141,14 @@ local function runSequence()
         if hum then hum.WalkSpeed=0 end
 
         setStatus("FAST TRAVEL","wait")
-        hrp.CFrame=CFrame.new(NEAR+Vector3.new(0,5,0)); task.wait(0.3)
+        hrp.CFrame=CFrame.new(data.NEAR+Vector3.new(0,5,0)); task.wait(0.3)
 
         setStatus("LOCATING HADIAH","wait")
-        local pr,obj=findPrompt()
+        local pr,obj=findPrompt(data.TARGET)
         if obj then
             local pos=getObjPos(obj)
             if pos then
-                local off=(NEAR-pos)
+                local off=(data.NEAR-pos)
                 off=off.Magnitude>0.1 and off.Unit*7 or Vector3.new(0,0,7)
                 hrp.CFrame=CFrame.new(pos+off+Vector3.new(0,3,0)); task.wait(0.25)
             end
@@ -152,26 +165,11 @@ local function runSequence()
                 task.wait(0.08)
             end
         end
-        if not fired and obj then
-            local pos=getObjPos(obj)
-            if pos then
-                local d=(pos-hrp.Position)
-                if d.Magnitude>0 then hrp.CFrame=CFrame.new(hrp.Position+d.Unit*3) end
-                task.wait(0.15)
-                if pr then
-                    for _=1,3 do
-                        local ok=pcall(function() fireproximityprompt(pr) end)
-                        if ok then fired=true;break end
-                        task.wait(0.08)
-                    end
-                end
-            end
-        end
-
-        setStatus("ARRIVED — CLAIM MANUAL","done")
+        
+        setStatus("ARRIVED CP"..index,"done")
         pcall(function()
             game:GetService("StarterGui"):SetCore("SendNotification",
-                {Title="Mount Sakahayang",Text="Sudah tiba. Ambil hadiah sekarang.",Duration=3})
+                {Title="Mount Sakahayang",Text="CP"..index.." Tiba. Ambil hadiah!",Duration=3})
         end)
         running=false
     end)
@@ -186,7 +184,6 @@ sg.DisplayOrder=9999; sg.IgnoreGuiInset=true
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 sg.Parent=player.PlayerGui
 
--- PANEL 260 × 520
 local F=Instance.new("Frame",sg)
 F.Size=UDim2.new(0,260,0,520)
 F.Position=UDim2.new(0,20,0,60)
@@ -195,13 +192,11 @@ F.Active=true; F.Draggable=true; F.ZIndex=10
 do Instance.new("UICorner",F).CornerRadius=UDim.new(0,10) end
 do Instance.new("UIStroke",F).Color=BRD end
 
--- top accent
 local TAc=Instance.new("Frame",F)
 TAc.Size=UDim2.new(1,-4,0,2); TAc.Position=UDim2.new(0,2,0,0)
 TAc.BackgroundColor3=SIL; TAc.BorderSizePixel=0; TAc.ZIndex=15
 do Instance.new("UICorner",TAc).CornerRadius=UDim.new(0,2) end
 
--- helper
 local function mkL(par,txt,col,sz,font,xa)
     local l=Instance.new("TextLabel",par)
     l.BackgroundTransparency=1; l.Text=txt
@@ -225,7 +220,7 @@ local function mkCard(yp,h,col,skCol)
     return c
 end
 
--- ══ TOPBAR  y=0 h=44
+-- TOPBAR
 local TB=Instance.new("Frame",F)
 TB.Size=UDim2.new(1,0,0,44); TB.Position=UDim2.new(0,0,0,0)
 TB.BackgroundColor3=DEEP; TB.BorderSizePixel=0; TB.ZIndex=11
@@ -251,8 +246,6 @@ XB.BackgroundColor3=MID; XB.Text="✕"; XB.TextColor3=DIM
 XB.Font=Enum.Font.GothamBold; XB.TextSize=9; XB.BorderSizePixel=0; XB.ZIndex=14
 do Instance.new("UICorner",XB).CornerRadius=UDim.new(0,5) end
 do Instance.new("UIStroke",XB).Color=BRD2 end
-XB.MouseEnter:Connect(function() XB.TextColor3=WHT end)
-XB.MouseLeave:Connect(function() XB.TextColor3=DIM end)
 XB.MouseButton1Click:Connect(function()
     TweenSvc:Create(F,TweenInfo.new(0.15),{BackgroundTransparency=1}):Play()
     task.delay(0.15,function() sg:Destroy() end)
@@ -260,11 +253,11 @@ end)
 
 mkSep(44, BRD)
 
--- ══ SYSTEM PROTECTION NOTICE  y=52
+-- PROTECTION NOTICE
 local spLbl=mkL(F,"⚠  SYSTEM PROTECTION ACTIVE",YL,9,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
 spLbl.Size=UDim2.new(1,-24,0,14); spLbl.Position=UDim2.new(0,12,0,52); spLbl.ZIndex=12
 
--- ══ VERIFIED CARD  y=72
+-- VERIFIED CARD
 local vc=mkCard(72,28,MID,BRD2)
 local vDot=Instance.new("Frame",vc)
 vDot.Size=UDim2.new(0,6,0,6); vDot.Position=UDim2.new(0,10,0.5,-3)
@@ -273,17 +266,7 @@ do Instance.new("UICorner",vDot).CornerRadius=UDim.new(1,0) end
 local vTxt=mkL(vc,"SCRIPT VERIFIED",GR,9,Enum.Font.GothamBold)
 vTxt.Size=UDim2.new(1,-30,1,0); vTxt.Position=UDim2.new(0,24,0,0); vTxt.ZIndex=13
 
--- blink dot
-task.spawn(function()
-    while sg and sg.Parent do
-        TweenSvc:Create(vDot,TweenInfo.new(1,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),
-            {BackgroundTransparency=0.6}):Play(); task.wait(1)
-        TweenSvc:Create(vDot,TweenInfo.new(1,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),
-            {BackgroundTransparency=0}):Play(); task.wait(1)
-    end
-end)
-
--- ══ STATUS CARD  y=108
+-- STATUS CARD
 local sc=mkCard(108,28,MID,BRD)
 SDot=Instance.new("Frame",sc)
 SDot.Size=UDim2.new(0,5,0,5); SDot.Position=UDim2.new(0,10,0.5,-2)
@@ -291,13 +274,11 @@ SDot.BackgroundColor3=GR; SDot.BorderSizePixel=0; SDot.ZIndex=13
 do Instance.new("UICorner",SDot).CornerRadius=UDim.new(1,0) end
 SVl=mkL(sc,"READY",GR,9,Enum.Font.GothamBold)
 SVl.Size=UDim2.new(1,-24,1,0); SVl.Position=UDim2.new(0,20,0,0); SVl.ZIndex=13
-SVl.TextTruncate=Enum.TextTruncate.AtEnd
 
--- ══ LOW GRAPHICS CARD  y=144
+-- LOW GRAPHICS CARD
 local lgc=mkCard(144,28,MID,BRD)
 local lgLbl=mkL(lgc,"LOW GRAPHICS",DIM,9,Enum.Font.GothamBold)
 lgLbl.Size=UDim2.new(0.65,0,1,0); lgLbl.Position=UDim2.new(0,10,0,0); lgLbl.ZIndex=13
-
 ALBtn=Instance.new("TextButton",lgc)
 ALBtn.Size=UDim2.new(0,38,0,18); ALBtn.Position=UDim2.new(1,-44,0.5,-9)
 ALBtn.BackgroundColor3=SRF; ALBtn.Text="ON"; ALBtn.TextColor3=WHT
@@ -314,65 +295,75 @@ ALBtn.MouseButton1Click:Connect(function()
     if alState then applyAntiLag() end
 end)
 
--- ══ START BUTTON  y=180
-local StartBtn=Instance.new("TextButton",F)
-StartBtn.Size=UDim2.new(1,-48,0,36); StartBtn.Position=UDim2.new(0,24,0,180)
-StartBtn.BackgroundColor3=WHT; StartBtn.Text="START RUN"
-StartBtn.TextColor3=DEEP; StartBtn.Font=Enum.Font.GothamBold
-StartBtn.TextSize=12; StartBtn.BorderSizePixel=0; StartBtn.ZIndex=12
-do Instance.new("UICorner",StartBtn).CornerRadius=UDim.new(0,8) end
-do Instance.new("UIStroke",StartBtn).Color=BRD2 end
+-- ══ DUAL START BUTTONS (CP 1 & CP 2) ══
+local btnW = (260 - 48 - 10) / 2 -- Hitung lebar agar muat 2 tombol + gap 10px
+
+-- TOMBOL CP 1
+local StartBtn1=Instance.new("TextButton",F)
+StartBtn1.Size=UDim2.new(0,btnW,0,36); StartBtn1.Position=UDim2.new(0,24,0,180)
+StartBtn1.BackgroundColor3=WHT; StartBtn1.Text="CP 1"
+StartBtn1.TextColor3=DEEP; StartBtn1.Font=Enum.Font.GothamBold
+StartBtn1.TextSize=12; StartBtn1.BorderSizePixel=0; StartBtn1.ZIndex=12
+do Instance.new("UICorner",StartBtn1).CornerRadius=UDim.new(0,8) end
+do Instance.new("UIStroke",StartBtn1).Color=BRD2 end
+
+-- TOMBOL CP 2
+local StartBtn2=Instance.new("TextButton",F)
+StartBtn2.Size=UDim2.new(0,btnW,0,36); StartBtn2.Position=UDim2.new(0,24 + btnW + 10,0,180)
+StartBtn2.BackgroundColor3=WHT; StartBtn2.Text="CP 2"
+StartBtn2.TextColor3=DEEP; StartBtn2.Font=Enum.Font.GothamBold
+StartBtn2.TextSize=12; StartBtn2.BorderSizePixel=0; StartBtn2.ZIndex=12
+do Instance.new("UICorner",StartBtn2).CornerRadius=UDim.new(0,8) end
+do Instance.new("UIStroke",StartBtn2).Color=BRD2 end
 
 local pulsing=true
 task.spawn(function()
     while sg and sg.Parent do
         if pulsing then
-            TweenSvc:Create(StartBtn,TweenInfo.new(1.2,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),
-                {BackgroundColor3=Color3.fromRGB(185,185,185)}):Play(); task.wait(1.2)
+            local c1 = Color3.fromRGB(185,185,185)
+            TweenSvc:Create(StartBtn1,TweenInfo.new(1.2),{BackgroundColor3=c1}):Play()
+            TweenSvc:Create(StartBtn2,TweenInfo.new(1.2),{BackgroundColor3=c1}):Play()
+            task.wait(1.2)
             if pulsing then
-                TweenSvc:Create(StartBtn,TweenInfo.new(1.2,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),
-                    {BackgroundColor3=WHT}):Play(); task.wait(1.2)
+                TweenSvc:Create(StartBtn1,TweenInfo.new(1.2),{BackgroundColor3=WHT}):Play()
+                TweenSvc:Create(StartBtn2,TweenInfo.new(1.2),{BackgroundColor3=WHT}):Play()
+                task.wait(1.2)
             end
         else task.wait(0.3) end
     end
 end)
 
-StartBtn.MouseButton1Click:Connect(function()
+local function handleBtnClick(idx, btn)
     if running then return end
     pulsing=false
-    StartBtn.BackgroundColor3=MID; StartBtn.TextColor3=YL; StartBtn.Text="RUNNING..."
-    runSequence()
+    btn.BackgroundColor3=MID; btn.TextColor3=YL; btn.Text="RUNNING..."
+    runSequence(idx)
     task.spawn(function()
         while running do task.wait(0.1) end; task.wait(0.4)
-        StartBtn.BackgroundColor3=WHT; StartBtn.TextColor3=DEEP
-        StartBtn.Text="START RUN"; pulsing=true
+        btn.BackgroundColor3=WHT; btn.TextColor3=DEEP
+        btn.Text="CP "..idx; pulsing=true
     end)
-end)
+end
+
+StartBtn1.MouseButton1Click:Connect(function() handleBtnClick(1, StartBtn1) end)
+StartBtn2.MouseButton1Click:Connect(function() handleBtnClick(2, StartBtn2) end)
 
 mkSep(226, BRD)
 
--- ══ ANTI-CRACK NOTICE  y=234
+-- ANTI-CRACK NOTICE
 local ac1=mkL(F,"⚠  ANTI-CRACK NOTICE",YL,9,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
 ac1.Size=UDim2.new(1,-24,0,14); ac1.Position=UDim2.new(0,12,0,234); ac1.ZIndex=12
 
-local noticeLines={
-    "Script ini dilindungi system.",
-    "Akses ditolak jika tidak resmi.",
-}
+local noticeLines={"Script ini dilindungi system.","Akses ditolak jika tidak resmi."}
 local ny=252
 for _,t in ipairs(noticeLines) do
     local l=mkL(F,t,DIM,8,Enum.Font.Gotham,Enum.TextXAlignment.Left)
     l.Size=UDim2.new(1,-24,0,13); l.Position=UDim2.new(0,12,0,ny); l.ZIndex=12; ny=ny+13
 end
-
-local denyLines={
-    {"•  Resell tanpa izin",    RD},
-    {"•  Share / leak script",  RD},
-    {"•  Edit / bypass system", RD},
-}
 ny=ny+4
 local dLabel=mkL(F,"Dilarang keras:",Color3.fromRGB(160,160,170),8,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
 dLabel.Size=UDim2.new(1,-24,0,13); dLabel.Position=UDim2.new(0,12,0,ny); dLabel.ZIndex=12; ny=ny+14
+local denyLines={{"•  Resell tanpa izin",RD},{"•  Share / leak script",RD},{"•  Edit / bypass system",RD}}
 for _,d in ipairs(denyLines) do
     local l=mkL(F,d[1],d[2],8,Enum.Font.Gotham,Enum.TextXAlignment.Left)
     l.Size=UDim2.new(1,-24,0,13); l.Position=UDim2.new(0,12,0,ny); l.ZIndex=12; ny=ny+13
@@ -380,57 +371,31 @@ end
 
 mkSep(ny+4, BRD)
 
--- ══ OFFICIAL AUTHOR  y=ny+12
+-- OFFICIAL AUTHOR
 local authY=ny+12
-local authTitle=mkL(F,"OFFICIAL AUTHOR",GD,9,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
-authTitle.Size=UDim2.new(1,-24,0,13); authTitle.Position=UDim2.new(0,12,0,authY); authTitle.ZIndex=12
+mkL(F,"OFFICIAL AUTHOR",GD,9,Enum.Font.GothamBold).Position=UDim2.new(0,12,0,authY)
+mkL(F,"Alfian Azhra",WHT,10,Enum.Font.GothamBold).Position=UDim2.new(0,12,0,authY+16)
+mkL(F,"Pembelian resmi hanya melalui:",DIM,8,Enum.Font.Gotham).Position=UDim2.new(0,12,0,authY+33)
 
-local authName=mkL(F,"Alfian Azhra",WHT,10,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
-authName.Size=UDim2.new(1,-24,0,14); authName.Position=UDim2.new(0,12,0,authY+16); authName.ZIndex=12
-
-local authNote=mkL(F,"Pembelian resmi hanya melalui:",DIM,8,Enum.Font.Gotham,Enum.TextXAlignment.Left)
-authNote.Size=UDim2.new(1,-24,0,13); authNote.Position=UDim2.new(0,12,0,authY+33); authNote.ZIndex=12
-
--- contact rows
 local function mkContact(yp,icon,iconBG,iconClr,key,val)
     local row=Instance.new("Frame",F)
     row.Size=UDim2.new(1,-24,0,22); row.Position=UDim2.new(0,12,0,yp)
     row.BackgroundTransparency=1; row.ZIndex=12
-
     local ico=Instance.new("TextLabel",row)
-    ico.Size=UDim2.new(0,18,0,18); ico.BackgroundColor3=iconBG; ico.BorderSizePixel=0; ico.ZIndex=13
-    ico.Text=icon; ico.TextColor3=iconClr; ico.Font=Enum.Font.GothamBold; ico.TextSize=9
-    ico.TextXAlignment=Enum.TextXAlignment.Center; ico.TextYAlignment=Enum.TextYAlignment.Center
+    ico.Size=UDim2.new(0,18,0,18); ico.BackgroundColor3=iconBG; ico.Text=icon; ico.TextColor3=iconClr
+    ico.Font=Enum.Font.GothamBold; ico.TextSize=9; ico.BorderSizePixel=0; ico.ZIndex=13
     do Instance.new("UICorner",ico).CornerRadius=UDim.new(0,4) end
-
-    local kl=mkL(row,key,DIM,8,Enum.Font.GothamBold)
-    kl.Size=UDim2.new(0,54,1,0); kl.Position=UDim2.new(0,22,0,0); kl.ZIndex=13
-
-    local vl=mkL(row,val,WHT,9,Enum.Font.GothamBold)
-    vl.Size=UDim2.new(1,-80,1,0); vl.Position=UDim2.new(0,78,0,0); vl.ZIndex=13
+    mkL(row,key,DIM,8,Enum.Font.GothamBold).Position=UDim2.new(0,22,0,0)
+    mkL(row,val,WHT,9,Enum.Font.GothamBold).Position=UDim2.new(0,78,0,0)
 end
+mkContact(authY+49, "f", Color3.fromRGB(18,28,60), Color3.fromRGB(100,150,255), "Facebook", "Alfian Azhra")
+mkContact(authY+74, "✆", Color3.fromRGB(10,35,18), Color3.fromRGB(80,210,120), "WhatsApp", "08998289407")
 
-mkContact(authY+49, "f",  Color3.fromRGB(18,28,60), Color3.fromRGB(100,150,255), "Facebook",  "Alfian Azhra")
-mkContact(authY+74, "✆", Color3.fromRGB(10,35,18),  Color3.fromRGB(80,210,120),  "WhatsApp", "08998289407")
-
-local warnNote=mkL(F,"⚠  Selain kontak di atas bukan author asli",YL,7,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
-warnNote.Size=UDim2.new(1,-24,0,13); warnNote.Position=UDim2.new(0,12,0,authY+100); warnNote.ZIndex=12
-
+mkL(F,"⚠  Selain kontak di atas bukan author asli",YL,7,Enum.Font.GothamBold).Position=UDim2.new(0,12,0,authY+100)
 mkSep(authY+116, BRD)
+mkL(F,"© PROTECTED PRIVATE SCRIPT",Color3.fromRGB(55,55,70),7,Enum.Font.GothamBold,Enum.TextXAlignment.Center).Position=UDim2.new(0,12,0,authY+120)
 
--- ══ FOOTER
-local footer=mkL(F,"© PROTECTED PRIVATE SCRIPT",Color3.fromRGB(55,55,70),7,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-footer.Size=UDim2.new(1,-24,0,14); footer.Position=UDim2.new(0,12,0,authY+120); footer.ZIndex=12
-
--- resize
-local totalH=authY+138
-F.Size=UDim2.new(0,260,0,totalH)
-
-UIS.InputBegan:Connect(function(inp,gpe)
-    if gpe then return end
-    if inp.KeyCode==Enum.KeyCode.F9 then F.Visible=not F.Visible end
-end)
-
+F.Size=UDim2.new(0,260,0,authY+138)
+UIS.InputBegan:Connect(function(inp,gpe) if not gpe and inp.KeyCode==Enum.KeyCode.F9 then F.Visible=not F.Visible end end)
 task.spawn(function() task.wait(0.5); applyAntiLag() end)
-
-print("Mount Sakahayang | By Alfian | F9 toggle")
+print("Mount Sakahayang | By Alfian | Multi-CP | F9 toggle")
