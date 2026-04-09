@@ -1,183 +1,182 @@
---[[ MOUNT SAKAHAYANG PREMIUM — LIGHT ROBUST VERSION ]]
+--[[ SAKAHAYANG STEALTH MODE — EVENT DRIVEN ]]
 
 local Players = game:GetService("Players")
+local UIS     = game:GetService("UserInputService")
+local PPS     = game:GetService("ProximityPromptService")
+
 local player  = Players.LocalPlayer
 
 -- ================= CONFIG =================
 local CHECKPOINTS = {
-	["CP 1"] = {
-		POS = Vector3.new(-313.5,653.1,-945.6)
-	},
-	["CP 2"] = {
-		POS = Vector3.new(4357.5,2237.1,-9544.7)
-	}
+	Vector3.new(-313.5,653.1,-945.6),
+	Vector3.new(4357.5,2237.1,-9544.7)
 }
 
-local CP_ORDER = {"CP 1","CP 2"}
-local SCAN_RADIUS = 120
-
 local running = false
+local activePrompt = nil
 
--- ================= CACHE PROMPTS =================
-local cachedPrompts = {}
-
-local function buildCache()
-	cachedPrompts = {}
-	for _,v in ipairs(workspace:GetDescendants()) do
-		if v:IsA("ProximityPrompt") then
-			table.insert(cachedPrompts, v)
-		end
-	end
+-- ================= STATUS =================
+local statusLabel
+local function setStatus(t)
+	if statusLabel then statusLabel.Text = t end
+	print(t)
 end
 
--- ================= SAFE TP =================
-local function safeTP(hrp, pos)
+-- ================= HUMAN TP =================
+local function humanTP(hrp, pos)
 	local offset = Vector3.new(
-		math.random(-2,2),
+		math.random(-3,3),
 		3,
-		math.random(-2,2)
+		math.random(-3,3)
 	)
 
 	hrp.CFrame = CFrame.new(pos + offset)
-	task.wait(0.3)
 
-	-- validasi
-	if (hrp.Position - pos).Magnitude > 25 then
-		hrp.CFrame = CFrame.new(pos + Vector3.new(0,5,0))
-	end
+	-- random delay (anti pattern)
+	task.wait(math.random(30,60)/100)
 end
 
--- ================= SCAN =================
-local KEYWORDS = {
-	"claim",
-	"ambil",
-	"reward",
-	"hadiah",
-	"redeem"
-}
+-- ================= PROMPT DETECTION =================
+local KEYWORDS = {"claim","ambil","reward","hadiah","redeem"}
 
-local function hasKeyword(text)
-	if not text then return false end
-	text = text:lower()
+local function validPrompt(prompt)
+	local t1 = (prompt.ActionText or ""):lower()
+	local t2 = (prompt.ObjectText or ""):lower()
 
 	for _,k in ipairs(KEYWORDS) do
-		if text:match(k) then
+		if t1:match(k) or t2:match(k) then
 			return true
 		end
 	end
 	return false
 end
 
-local function scanNearby(hrp)
-	local results = {}
-
-	for _,p in ipairs(cachedPrompts) do
-		if p.Parent then
-			local part = p.Parent
-			if part:IsA("BasePart") then
-				local dist = (part.Position - hrp.Position).Magnitude
-
-				if dist <= SCAN_RADIUS then
-					if hasKeyword(p.ActionText) or hasKeyword(p.ObjectText) then
-						table.insert(results, {
-							prompt = p,
-							pos = part.Position,
-							dist = dist
-						})
-					end
-				end
-			end
-		end
+-- listen event (INI KUNCI STEALTH)
+PPS.PromptShown:Connect(function(prompt)
+	if not running then return end
+	if validPrompt(prompt) then
+		activePrompt = prompt
 	end
+end)
 
-	table.sort(results, function(a,b)
-		return a.dist < b.dist
+-- ================= CLAIM =================
+local function tryClaim(hrp)
+	if not activePrompt then return false end
+
+	local parent = activePrompt.Parent
+	if not parent or not parent:IsA("BasePart") then return false end
+
+	-- pastikan dekat
+	local dist = (parent.Position - hrp.Position).Magnitude
+	if dist > 15 then return false end
+
+	-- positioning halus
+	hrp.CFrame = CFrame.new(parent.Position + Vector3.new(0,2,0))
+
+	task.wait(math.random(20,40)/100)
+
+	pcall(function()
+		fireproximityprompt(activePrompt)
 	end)
 
-	return results
+	setStatus("✅ CLAIMED")
+	return true
 end
 
--- ================= FIRE =================
-local function firePrompt(prompt)
-	for i=1,3 do
-		local ok = pcall(function()
-			fireproximityprompt(prompt)
-		end)
-
-		if ok then return true end
-		task.wait(0.1)
-	end
-
-	return false
-end
-
--- ================= RUN CP =================
-local function runCP(name)
-	local cp = CHECKPOINTS[name]
-	if not cp then return false end
-
-	local char = player.Character or player.CharacterAdded:Wait()
-	local hrp = char:WaitForChild("HumanoidRootPart",5)
-	if not hrp then return false end
-
-	print("➡️ ", name)
-
-	safeTP(hrp, cp.POS)
-
-	-- tunggu load (dynamic, bukan fixed)
-	local t = 0
-	local results = {}
-
-	repeat
-		task.wait(0.2)
-		t += 0.2
-		results = scanNearby(hrp)
-	until (#results > 0 or t > 2)
-
-	if #results == 0 then
-		print("❌ No prompt:", name)
-		return false
-	end
-
-	local target = results[1]
-
-	-- positioning
-	hrp.CFrame = CFrame.new(target.pos + Vector3.new(0,3,0))
-	task.wait(0.2)
-
-	local success = firePrompt(target.prompt)
-
-	if success then
-		print("✅ Claimed:", name)
-		return true
-	else
-		print("⚠️ Failed fire:", name)
-		return false
-	end
-end
-
--- ================= MAIN =================
+-- ================= RUN =================
 local function runAll()
 	if running then return end
 	running = true
 
-	buildCache()
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hrp  = char:WaitForChild("HumanoidRootPart",5)
+	if not hrp then return end
 
-	for i,name in ipairs(CP_ORDER) do
-		print("CP "..i.."/"..#CP_ORDER)
+	for i,pos in ipairs(CHECKPOINTS) do
+		if not running then break end
 
-		local ok = runCP(name)
+		activePrompt = nil
+		setStatus("➡️ CP "..i)
 
-		if not ok then
-			print("Skip:", name)
+		humanTP(hrp, pos)
+
+		-- tunggu prompt muncul (event-based)
+		local t = 0
+		repeat
+			task.wait(0.1)
+			t += 0.1
+		until (activePrompt or t > 3)
+
+		if activePrompt then
+			tryClaim(hrp)
+		else
+			setStatus("❌ no prompt")
 		end
 
-		task.wait(1)
+		task.wait(math.random(80,120)/100)
 	end
 
 	running = false
-	print("🎯 DONE ALL CP")
+	setStatus("🎯 DONE")
 end
 
--- ================= START =================
-runAll()
+local function stopRun()
+	running = false
+	setStatus("⛔ STOP")
+end
+
+-- ================= GUI =================
+local sg = Instance.new("ScreenGui", player.PlayerGui)
+sg.Name = "StealthMode"
+
+local frame = Instance.new("Frame", sg)
+frame.Size = UDim2.new(0,220,0,140)
+frame.Position = UDim2.new(0,20,0,60)
+frame.BackgroundColor3 = Color3.fromRGB(18,18,22)
+frame.Active = true
+frame.Draggable = true
+Instance.new("UICorner",frame)
+
+local title = Instance.new("TextLabel",frame)
+title.Size = UDim2.new(1,0,0,25)
+title.Text = "STEALTH MODE"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 11
+
+statusLabel = Instance.new("TextLabel",frame)
+statusLabel.Size = UDim2.new(1,0,0,20)
+statusLabel.Position = UDim2.new(0,0,0,25)
+statusLabel.Text = "READY"
+statusLabel.TextColor3 = Color3.fromRGB(150,255,150)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextSize = 10
+
+local runBtn = Instance.new("TextButton",frame)
+runBtn.Size = UDim2.new(1,-40,0,30)
+runBtn.Position = UDim2.new(0,20,0,55)
+runBtn.Text = "RUN"
+runBtn.BackgroundColor3 = Color3.fromRGB(200,200,200)
+runBtn.TextColor3 = Color3.new(0,0,0)
+Instance.new("UICorner",runBtn)
+
+runBtn.MouseButton1Click:Connect(runAll)
+
+local stopBtn = Instance.new("TextButton",frame)
+stopBtn.Size = UDim2.new(1,-40,0,30)
+stopBtn.Position = UDim2.new(0,20,0,95)
+stopBtn.Text = "STOP"
+stopBtn.BackgroundColor3 = Color3.fromRGB(120,50,50)
+stopBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner",stopBtn)
+
+stopBtn.MouseButton1Click:Connect(stopRun)
+
+UIS.InputBegan:Connect(function(inp,gpe)
+	if gpe then return end
+	if inp.KeyCode == Enum.KeyCode.F9 then
+		frame.Visible = not frame.Visible
+	end
+end)
