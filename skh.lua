@@ -1,294 +1,522 @@
 --[[
-  ZIHAN NAVIGATOR v6 — CYBER EDITION
-  STREAMING-AWARE · PROXIMITY-FIRST · MULTI-PASS SCANNER
+  MOUNT ZIHAN v6 — PRODUCTION NAVIGATOR
+  BY ALFIAN
+
+  Architecture:
+  - Multi-radius progressive scanning (50→100→200)
+  - Adaptive wait system (no fixed delays)
+  - Streaming-aware design
+  - Multi-pass filtering with early exit
+  - Mobile + PC friendly GUI
+  - Full error handling
 ]]
 
--- ════════════════════════════════════════════════════════════
--- CONFIGURATION
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- CONFIGURATION (EASILY EDITABLE)
+-- ═══════════════════════════════════════════════════════════════
 
-local CP = {
-    Vector3.new(-312.329, 654.005, -952.673),
-    Vector3.new(4356.271, 2238.856, -9533.901),
+local CONFIG = {
+    -- Title
+    TITLE = "YUHU Navigator",
+    SUBTITLE = "BY YUHU · AUTO SCAN GOPAY",
+
+    -- Scanning
+    SCAN_RADII = {50, 100, 200},
+    SCAN_INTERVAL = 0.2,
+    SCAN_TIMEOUT = 4,
+
+    -- Navigation
+    TP_RETRY_COUNT = 3,
+    TP_RETRY_DELAY = 0.15,
+    TP_OFFSET_Y = 5,
+    SAFE_DISTANCE = 7,
+
+    -- Claim
+    MAX_CLAIM_CANDIDATES = 3,
+    CLAIM_RETRY_COUNT = 3,
+    CLAIM_RETRY_DELAY = 0.1,
+
+    -- Anti-Lag
+    MAX_FPS = 15,
+
+    -- Status Messages
+    MSG_READY = "READY",
+    MSG_TELEPORTING = "TELEPORTING",
+    MSG_SCANNING = "SCANNING",
+    MSG_FOUND = "GOPAY FOUND",
+    MSG_CLAIMING = "CLAIMING",
+    MSG_CLAIMED = "CLAIMED",
+    MSG_NOT_FOUND = "NO GOPAY",
+    MSG_STOPPED = "STOPPED",
+    MSG_ERROR = "ERROR",
+    MSG_COMPLETE = "ALL CP CHECKED",
+    MSG_FINAL = "FINAL CLAIM",
+
+    -- Colors (CYBER FUTURISTIC)
+    COLORS = {
+        BACKGROUND = Color3.fromRGB(10, 10, 16),
+        PANEL = Color3.fromRGB(14, 14, 22),
+        HEADER = Color3.fromRGB(8, 8, 14),
+        CARD = Color3.fromRGB(18, 18, 28),
+        BORDER = Color3.fromRGB(30, 35, 50),
+        BORDER_LIGHT = Color3.fromRGB(45, 50, 70),
+        ACCENT = Color3.fromRGB(0, 170, 255),
+        ACCENT_DIM = Color3.fromRGB(0, 90, 150),
+        ACCENT_GLOW = Color3.fromRGB(0, 220, 255),
+        SUCCESS = Color3.fromRGB(0, 255, 140),
+        ERROR = Color3.fromRGB(255, 65, 65),
+        WARNING = Color3.fromRGB(255, 195, 45),
+        TEXT_PRIMARY = Color3.fromRGB(215, 220, 235),
+        TEXT_SECONDARY = Color3.fromRGB(115, 120, 145),
+        TEXT_DIM = Color3.fromRGB(65, 70, 90),
+        BTN_STOP_BG = Color3.fromRGB(38, 10, 10),
+        BTN_STOP_BORDER = Color3.fromRGB(75, 22, 22),
+        BTN_STOP_HOVER = Color3.fromRGB(55, 16, 16),
+        BTN_CLAIM_BG = Color3.fromRGB(8, 28, 48),
+        BTN_CLAIM_BORDER = Color3.fromRGB(18, 65, 115),
+        BTN_CLAIM_HOVER = Color3.fromRGB(12, 38, 62),
+        BTN_START_BG = Color3.fromRGB(0, 130, 210),
+        BTN_START_HOVER = Color3.fromRGB(0, 155, 245),
+        BTN_START_RUNNING = Color3.fromRGB(0, 80, 130),
+        CP_ACTIVE_BG = Color3.fromRGB(22, 32, 52),
+        CP_ACTIVE_BORDER = Color3.fromRGB(0, 110, 180),
+        CP_INACTIVE_BG = Color3.fromRGB(16, 16, 26),
+        CP_HOVER_BG = Color3.fromRGB(24, 24, 38),
+    },
+
+    -- GUI Sizing
+    GUI_WIDTH = 276,
+    GUI_HEIGHT = 330,
 }
+
+-- ═══════════════════════════════════════════════════════════════
+-- REQUIRED CONSTANTS (DO NOT REMOVE)
+-- ═══════════════════════════════════════════════════════════════
 
 local KEYWORDS = {"claim", "voucher", "gopay", "redemption", "klaim", "reward"}
 
 local KNOWN_OBJ = {
-    "RedemptionPointBasepart", "Gopay", "GopayPoint", "Primary",
-    "VoucherPoint", "ClaimPoint", "Part"
+    "RedemptionPointBasepart",
+    "Gopay",
+    "GopayPoint",
+    "Primary",
+    "VoucherPoint",
+    "ClaimPoint",
+    "Part",
 }
 
-local SCAN_RADII    = {50, 100, 200}
-local SCAN_INTERVAL = 0.2
-local SCAN_TIMEOUT  = 5
-local PROMPT_RETRIES = 3
-local TP_RETRIES     = 3
+-- ═══════════════════════════════════════════════════════════════
+-- CHECKPOINT DATA (EDIT THIS FOR DIFFERENT MAPS)
+-- ═══════════════════════════════════════════════════════════════
 
--- ════════════════════════════════════════════════════════════
--- THEME
--- ════════════════════════════════════════════════════════════
-
-local T = {
-    BG_DEEP     = Color3.fromRGB(6, 6, 14),
-    BG_PANEL    = Color3.fromRGB(10, 10, 22),
-    BG_CARD     = Color3.fromRGB(16, 16, 36),
-    BG_INPUT    = Color3.fromRGB(18, 18, 40),
-    BORDER      = Color3.fromRGB(28, 28, 60),
-    BORDER_HI   = Color3.fromRGB(45, 45, 90),
-    NEON_CYAN   = Color3.fromRGB(0, 229, 255),
-    NEON_BLUE   = Color3.fromRGB(41, 121, 255),
-    NEON_PURP   = Color3.fromRGB(124, 77, 255),
-    NEON_GREEN  = Color3.fromRGB(0, 255, 136),
-    NEON_RED    = Color3.fromRGB(255, 50, 80),
-    NEON_YELLOW = Color3.fromRGB(255, 200, 0),
-    TXT_PRI     = Color3.fromRGB(220, 220, 240),
-    TXT_DIM     = Color3.fromRGB(70, 70, 110),
-    TXT_MID     = Color3.fromRGB(130, 130, 165),
+local CP_LIST = {
+    Vector3.new(-312.329, 654.005, -952.673),
+    Vector3.new(4356.271, 2238.856, -9533.901),
 }
 
--- ════════════════════════════════════════════════════════════
+local CLAIM_POINT = nil -- Set to Vector3 for final claim, or nil to skip
+
+-- ═══════════════════════════════════════════════════════════════
 -- SERVICES
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 
-local Players      = game:GetService("Players")
-local UIS          = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local player       = Players.LocalPlayer
+local StarterGui = game:GetService("StarterGui")
 
--- ════════════════════════════════════════════════════════════
--- STATE
--- ════════════════════════════════════════════════════════════
+local player = Players.LocalPlayer
 
-local state = {
-    running   = false,
-    stopped   = false,
+-- ═══════════════════════════════════════════════════════════════
+-- STATE MANAGEMENT
+-- ═══════════════════════════════════════════════════════════════
+
+local State = {
+    running = false,
+    stopped = false,
     currentCP = 0,
-    guiScale  = 1.0,
+    guiElements = {},
+    cpButtons = {},
+    pulsing = true,
+    antiLagOn = false,
+    screenGui = nil,
 }
 
--- ════════════════════════════════════════════════════════════
--- CLEANUP OLD GUI
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- UTILITY FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════
 
-pcall(function()
-    for _, g in ipairs(player.PlayerGui:GetChildren()) do
-        if g.Name == "ZihanNavigator" then g:Destroy() end
+local function hasKeyword(text)
+    if type(text) ~= "string" or text == "" then
+        return false
     end
-end)
-
--- ════════════════════════════════════════════════════════════
--- UTILITY
--- ════════════════════════════════════════════════════════════
-
-local function hasKeyword(str)
-    if type(str) ~= "string" or str == "" then return false end
-    local lo = str:lower()
+    local lower = text:lower()
     for _, kw in ipairs(KEYWORDS) do
-        if lo:find(kw, 1, true) then return true end
+        if lower:find(kw, 1, true) then
+            return true
+        end
     end
     return false
 end
 
-local function isKnownObj(name)
-    if type(name) ~= "string" or name == "" then return false end
-    local lo = name:lower()
-    for _, n in ipairs(KNOWN_OBJ) do
-        if lo == n:lower() then return true end
+local function isKnownObject(name)
+    if type(name) ~= "string" or name == "" then
+        return false
     end
-    return lo:find("redemption", 1, true)
-        or lo:find("gopay", 1, true)
-        or lo:find("voucher", 1, true)
-        or lo:find("claim", 1, true)
+    local lower = name:lower()
+    for _, known in ipairs(KNOWN_OBJ) do
+        if lower == known:lower() then
+            return true
+        end
+    end
+    -- Partial match for variations
+    return lower:find("redemption")
+        or lower:find("gopay")
+        or lower:find("voucher")
+        or lower:find("claim")
 end
 
-local function getObjPos(obj)
-    if obj:IsA("BasePart") then return obj.Position end
+local function getObjectPosition(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then
+        return obj.Position
+    end
     if obj:IsA("Model") then
-        local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-        return pp and pp.Position or nil
+        local pp = obj.PrimaryPart
+        if pp then return pp.Position end
+        local part = obj:FindFirstChildWhichIsA("BasePart")
+        if part then return part.Position end
+    end
+    if obj:IsA("Attachment") then
+        return obj.WorldPosition
     end
     return nil
 end
 
-local function safeFire(prompt)
-    return pcall(function() fireproximityprompt(prompt) end)
+local function safeFirePrompt(prompt)
+    if not prompt or not prompt.Parent then
+        return false
+    end
+    local ok, err = pcall(function()
+        fireproximityprompt(prompt)
+    end)
+    return ok
 end
 
-local function notify(title, text)
+local function sendNotification(title, text, duration)
     pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = title, Text = text, Duration = 4,
+        StarterGui:SetCore("SendNotification", {
+            Title = title or "Zihan",
+            Text = text or "",
+            Duration = duration or 4,
         })
     end)
 end
 
--- ════════════════════════════════════════════════════════════
--- ANTI-LAG
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- ANTI-LAG MODULE
+-- ═══════════════════════════════════════════════════════════════
 
 local AntiLag = {}
 
 function AntiLag.apply()
-    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level03 end)
-    pcall(function() settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level02 end)
-    pcall(function() workspace.GlobalShadows = false end)
     pcall(function()
-        local L = game:GetService("Lighting")
-        L.GlobalShadows = false
-        L.Brightness = 1.5
-        L.EnvironmentDiffuseScale = 0.3
-        L.EnvironmentSpecularScale = 0.2
-        for _, v in ipairs(L:GetChildren()) do
-            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect")
-                or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-                v.Enabled = false
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    end)
+    pcall(function()
+        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+    end)
+    pcall(function()
+        workspace.GlobalShadows = false
+    end)
+    pcall(function()
+        settings().Rendering.MaxFrameRate = CONFIG.MAX_FPS
+    end)
+    pcall(function()
+        local lighting = game:GetService("Lighting")
+        lighting.GlobalShadows = false
+        lighting.Brightness = 1
+        lighting.EnvironmentDiffuseScale = 0
+        lighting.EnvironmentSpecularScale = 0
+        lighting.FogEnd = 100000
+
+        for _, child in ipairs(lighting:GetChildren()) do
+            if child:IsA("PostEffect") then
+                child.Enabled = false
             end
         end
     end)
     pcall(function()
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("ParticleEmitter") or v:IsA("Fire")
-                or v:IsA("Smoke") or v:IsA("Sparkles") then
-                v.Enabled = false
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Fire")
+                or obj:IsA("Smoke") or obj:IsA("Sparkles")
+                or obj:IsA("Beam") then
+                obj.Enabled = false
+            end
+            if obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1
             end
         end
     end)
+    State.antiLagOn = true
 end
 
-function AntiLag.restore()
-    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
-    pcall(function() settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Automatic end)
-    pcall(function() workspace.GlobalShadows = true end)
+function AntiLag.remove()
+    pcall(function()
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+    end)
+    pcall(function()
+        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Automatic
+    end)
+    pcall(function()
+        settings().Rendering.MaxFrameRate = 999
+    end)
+    State.antiLagOn = false
 end
 
--- ════════════════════════════════════════════════════════════
--- SCANNER — PROXIMITY-FIRST · MULTI-PASS · STREAMING-AWARE
--- ════════════════════════════════════════════════════════════
+function AntiLag.toggle()
+    if State.antiLagOn then
+        AntiLag.remove()
+    else
+        AntiLag.apply()
+    end
+    return State.antiLagOn
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- SCANNER MODULE (MULTI-RADIUS + MULTI-PASS + FALLBACK)
+-- ═══════════════════════════════════════════════════════════════
 
 local Scanner = {}
 
---- Acquire parts near center using primary radius scan
-function Scanner.acquireParts(center, radius)
-    local ok, parts = pcall(function()
-        return workspace:GetPartBoundsInRadius(center, radius)
-    end)
-    if ok and parts and #parts > 0 then
-        return parts
+--- Extract prompt info from a single BasePart
+---@param part BasePart
+---@param centerPos Vector3
+---@param seen table
+---@return table|nil
+local function extractPromptFromPart(part, centerPos, seen)
+    local pos = part.Position
+    local dist = (pos - centerPos).Magnitude
+
+    -- Check the part itself for ProximityPrompt
+    local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+    if prompt and not seen[prompt] then
+        local actionText = prompt.ActionText or ""
+        local objectText = prompt.ObjectText or ""
+        local parentName = part.Parent and part.Parent.Name or ""
+
+        if hasKeyword(actionText) or hasKeyword(objectText)
+            or hasKeyword(parentName) or isKnownObject(parentName) then
+            seen[prompt] = true
+            return {
+                prompt = prompt,
+                position = pos,
+                label = actionText ~= "" and actionText or parentName,
+                distance = dist,
+                source = "prompt_direct",
+            }
+        end
     end
-    -- FALLBACK: GetDescendants (optimized, early exit not possible here
-    -- but we only call this when primary fails which is rare)
+
+    -- Check children for ProximityPrompt
+    for _, child in ipairs(part:GetChildren()) do
+        if child:IsA("ProximityPrompt") and not seen[child] then
+            local actionText = child.ActionText or ""
+            local objectText = child.ObjectText or ""
+
+            if hasKeyword(actionText) or hasKeyword(objectText) then
+                seen[child] = true
+                return {
+                    prompt = child,
+                    position = pos,
+                    label = actionText ~= "" and actionText or part.Name,
+                    distance = dist,
+                    source = "prompt_child",
+                }
+            end
+        end
+    end
+
+    return nil
+end
+
+--- Multi-pass filter on a set of BaseParts
+---@param parts table<BasePart>
+---@param centerPos Vector3
+---@return table
+function Scanner.filterParts(parts, centerPos)
+    local seen = {}
     local results = {}
-    local fok = pcall(function()
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("BasePart") and (v.Position - center).Magnitude <= radius then
-                table.insert(results, v)
-            end
-        end
-    end)
-    return fok and results or {}
-end
 
---- Build a result entry from a prompt + position
-local function makeResult(prompt, pos, label, dist, passNum)
-    return {
-        prompt = prompt,
-        pos    = pos,
-        label  = label,
-        dist   = dist,
-        pass   = passNum,
-    }
-end
-
---- PASS 1 — ProximityPrompt (highest priority)
---- Checks each returned part and its children for ProximityPrompt
---- with keyword-matching ActionText / ObjectText / Parent.Name
-local function pass1_prompt(parts, center, radius, seen)
+    -- ═══ PASS 1: Direct ProximityPrompt detection (HIGHEST PRIORITY) ═══
     for _, part in ipairs(parts) do
-        local candidates = {part}
-        for _, ch in ipairs(part:GetChildren()) do
-            if ch:IsA("ProximityPrompt") then
-                table.insert(candidates, ch)
+        if not part:IsA("BasePart") then continue end
+        local result = extractPromptFromPart(part, centerPos, seen)
+        if result then
+            table.insert(results, result)
+        end
+    end
+
+    if #results > 0 then
+        table.sort(results, function(a, b) return a.distance < b.distance end)
+        return results
+    end
+
+    -- ═══ PASS 2: Known object names ═══
+    for _, part in ipairs(parts) do
+        if not part:IsA("BasePart") then continue end
+
+        -- Check part name
+        if isKnownObject(part.Name) then
+            local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+            if prompt and not seen[prompt] then
+                seen[prompt] = true
+                table.insert(results, {
+                    prompt = prompt,
+                    position = part.Position,
+                    label = part.Name,
+                    distance = (part.Position - centerPos).Magnitude,
+                    source = "name_part",
+                })
             end
         end
-        for _, pr in ipairs(candidates) do
-            if pr:IsA("ProximityPrompt") and not seen[pr] then
-                local at = pr.ActionText or ""
-                local ot = pr.ObjectText or ""
-                local pn = pr.Parent and pr.Parent.Name or ""
-                if hasKeyword(at) or hasKeyword(ot) or hasKeyword(pn) or isKnownObj(pn) then
-                    local par = pr.Parent
-                    local pos = getObjPos(par)
-                    if pos and (pos - center).Magnitude <= radius then
-                        seen[pr] = true
-                        return makeResult(pr, pos, at ~= "" and at or pn,
-                            (pos - center).Magnitude, 1)
-                    end
-                end
+
+        -- Check parent model name
+        local parent = part.Parent
+        if parent and parent:IsA("Model") and isKnownObject(parent.Name) then
+            local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+            if prompt and not seen[prompt] then
+                seen[prompt] = true
+                table.insert(results, {
+                    prompt = prompt,
+                    position = part.Position,
+                    label = parent.Name,
+                    distance = (part.Position - centerPos).Magnitude,
+                    source = "name_model",
+                })
             end
         end
     end
-    return nil
-end
 
---- PASS 2 — Object name matching
---- Checks part name and parent name against KNOWN_OBJ / KEYWORDS
-local function pass2_name(parts, center, radius, seen)
+    if #results > 0 then
+        table.sort(results, function(a, b) return a.distance < b.distance end)
+        return results
+    end
+
+    -- ═══ PASS 3: GUI text (BillboardGui / SurfaceGui) ═══
     for _, part in ipairs(parts) do
-        -- Check part's parent (likely a Model)
-        local par = part.Parent
-        if par then
-            if isKnownObj(par.Name) then
-                local pos = getObjPos(par)
-                if pos and (pos - center).Magnitude <= radius then
-                    for _, ch in ipairs(par:GetDescendants()) do
-                        if ch:IsA("ProximityPrompt") and not seen[ch] then
-                            seen[ch] = true
-                            return makeResult(ch, pos, par.Name,
-                                (pos - center).Magnitude, 2)
+        if not part:IsA("BasePart") then continue end
+
+        for _, guiChild in ipairs(part:GetChildren()) do
+            if guiChild:IsA("BillboardGui") or guiChild:IsA("SurfaceGui") then
+                local found = false
+                for _, textElem in ipairs(guiChild:GetDescendants()) do
+                    if (textElem:IsA("TextLabel") or textElem:IsA("TextButton"))
+                        and hasKeyword(textElem.Text) then
+                        local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt and not seen[prompt] then
+                            seen[prompt] = true
+                            table.insert(results, {
+                                prompt = prompt,
+                                position = part.Position,
+                                label = textElem.Text,
+                                distance = (part.Position - centerPos).Magnitude,
+                                source = "gui_text",
+                            })
                         end
+                        found = true
+                        break
                     end
                 end
-            end
-        end
-        -- Check part name directly
-        if isKnownObj(part.Name) then
-            local pos = part.Position
-            if (pos - center).Magnitude <= radius then
-                for _, ch in ipairs(part:GetChildren()) do
-                    if ch:IsA("ProximityPrompt") and not seen[ch] then
-                        seen[ch] = true
-                        return makeResult(ch, pos, part.Name,
-                            (pos - center).Magnitude, 2)
-                    end
-                end
+                if found then break end
             end
         end
     end
-    return nil
+
+    if #results > 0 then
+        table.sort(results, function(a, b) return a.distance < b.distance end)
+    end
+
+    return results
 end
 
---- PASS 3 — GUI text (BillboardGui / SurfaceGui)
---- Scans GUI children for keyword-matching text, then finds associated prompt
-local function pass3_gui(parts, center, radius, seen)
-    for _, part in ipairs(parts) do
-        local par = part.Parent
-        if not par then continue end
-        local pos = getObjPos(par)
-        if not pos or (pos - center).Magnitude > radius then continue end
+--- Fallback scanner using GetDescendants (ONLY when primary fails)
+---@param centerPos Vector3
+---@param maxRadius number
+---@return table
+function Scanner.fallbackScan(centerPos, maxRadius)
+    local seen = {}
+    local results = {}
 
-        for _, gui in ipairs(par:GetChildren()) do
-            if gui:IsA("BillboardGui") or gui:IsA("SurfaceGui") then
-                for _, tc in ipairs(gui:GetDescendants()) do
-                    if (tc:IsA("TextLabel") or tc:IsA("TextButton"))
-                        and hasKeyword(tc.Text) then
-                        -- Find ANY prompt in the parent hierarchy
-                        for _, dc in ipairs(par:GetDescendants()) do
-                            if dc:IsA("ProximityPrompt") and not seen[dc] then
-                                seen[dc] = true
-                                return makeResult(dc, pos, tc.Text,
-                                    (pos - center).Magnitude, 3)
-                            end
+    local descendants
+    local ok = pcall(function()
+        descendants = workspace:GetDescendants()
+    end)
+    if not ok or not descendants then
+        return results
+    end
+
+    for _, obj in ipairs(descendants) do
+        local pos = getObjectPosition(obj)
+        if not pos then continue end
+
+        local dist = (pos - centerPos).Magnitude
+        if dist > maxRadius then continue end
+
+        -- PASS 1: Direct ProximityPrompt on any object
+        if obj:IsA("ProximityPrompt") and not seen[obj] then
+            local actionText = obj.ActionText or ""
+            local objectText = obj.ObjectText or ""
+            local parentName = obj.Parent and obj.Parent.Name or ""
+
+            if hasKeyword(actionText) or hasKeyword(objectText)
+                or hasKeyword(parentName) or isKnownObject(parentName) then
+                seen[obj] = true
+                table.insert(results, {
+                    prompt = obj,
+                    position = pos,
+                    label = actionText ~= "" and actionText or parentName,
+                    distance = dist,
+                    source = "fallback_prompt",
+                })
+                continue
+            end
+        end
+
+        -- PASS 2: Known objects (BasePart or Model)
+        if (obj:IsA("BasePart") or obj:IsA("Model")) and isKnownObject(obj.Name) then
+            local prompt = obj:FindFirstChildOfClass("ProximityPrompt")
+            if prompt and not seen[prompt] then
+                seen[prompt] = true
+                table.insert(results, {
+                    prompt = prompt,
+                    position = pos,
+                    label = obj.Name,
+                    distance = dist,
+                    source = "fallback_name",
+                })
+            end
+            continue
+        end
+
+        -- PASS 3: GUI text
+        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            local parent = obj.Parent
+            if parent then
+                for _, textElem in ipairs(obj:GetDescendants()) do
+                    if (textElem:IsA("TextLabel") or textElem:IsA("TextButton"))
+                        and hasKeyword(textElem.Text) then
+                        local prompt = parent:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt and not seen[prompt] then
+                            seen[prompt] = true
+                            local pPos = getObjectPosition(parent)
+                            table.insert(results, {
+                                prompt = prompt,
+                                position = pPos or pos,
+                                label = textElem.Text,
+                                distance = pPos and (pPos - centerPos).Magnitude or dist,
+                                source = "fallback_gui",
+                            })
                         end
                         break
                     end
@@ -296,908 +524,930 @@ local function pass3_gui(parts, center, radius, seen)
             end
         end
     end
-    return nil
+
+    table.sort(results, function(a, b) return a.distance < b.distance end)
+    return results
 end
 
---- Single-radius scan with all 3 passes (early exit per pass)
-function Scanner.scanRadius(center, radius)
-    local parts = Scanner.acquireParts(center, radius)
-    if not parts or #parts == 0 then return nil end
-    local seen = {}
+--- Main scan entry point with multi-radius progression
+---@param centerPos Vector3
+---@return table results, boolean usedFallback
+function Scanner.scan(centerPos)
+    -- PRIMARY METHOD: GetPartBoundsInRadius with progressive radii
+    for _, radius in ipairs(CONFIG.SCAN_RADII) do
+        local parts = {}
+        local ok = pcall(function()
+            parts = workspace:GetPartBoundsInRadius(centerPos, radius)
+        end)
 
-    local r = pass1_prompt(parts, center, radius, seen)
-    if r then return r end
-
-    r = pass2_name(parts, center, radius, seen)
-    if r then return r end
-
-    r = pass3_gui(parts, center, radius, seen)
-    return r
-end
-
---- Multi-radius scan: 50 → 100 → 200 (early exit per radius)
-function Scanner.scanAll(center)
-    for _, radius in ipairs(SCAN_RADII) do
-        local r = Scanner.scanRadius(center, radius)
-        if r then return r end
-    end
-    return nil
-end
-
---- Collect ALL targets across all radii and all passes (for multi-target firing)
-function Scanner.scanAllTargets(center)
-    local all, seen = {}, {}
-    for _, radius in ipairs(SCAN_RADII) do
-        local parts = Scanner.acquireParts(center, radius)
-        if parts and #parts > 0 then
-            -- Pass 1 collect
-            for _, part in ipairs(parts) do
-                local candidates = {part}
-                for _, ch in ipairs(part:GetChildren()) do
-                    if ch:IsA("ProximityPrompt") then table.insert(candidates, ch) end
-                end
-                for _, pr in ipairs(candidates) do
-                    if pr:IsA("ProximityPrompt") and not seen[pr] then
-                        local at = pr.ActionText or ""
-                        local ot = pr.ObjectText or ""
-                        local pn = pr.Parent and pr.Parent.Name or ""
-                        if hasKeyword(at) or hasKeyword(ot) or hasKeyword(pn) or isKnownObj(pn) then
-                            local par = pr.Parent
-                            local pos = getObjPos(par)
-                            if pos and (pos - center).Magnitude <= radius then
-                                seen[pr] = true
-                                table.insert(all, makeResult(pr, pos,
-                                    at ~= "" and at or pn, (pos - center).Magnitude, 1))
-                            end
-                        end
-                    end
-                end
-            end
-            -- Pass 2 collect
-            for _, part in ipairs(parts) do
-                local par = part.Parent
-                if par and isKnownObj(par.Name) then
-                    local pos = getObjPos(par)
-                    if pos and (pos - center).Magnitude <= radius then
-                        for _, ch in ipairs(par:GetDescendants()) do
-                            if ch:IsA("ProximityPrompt") and not seen[ch] then
-                                seen[ch] = true
-                                table.insert(all, makeResult(ch, pos, par.Name,
-                                    (pos - center).Magnitude, 2))
-                            end
-                        end
-                    end
-                end
-                if isKnownObj(part.Name) then
-                    local pos = part.Position
-                    if (pos - center).Magnitude <= radius then
-                        for _, ch in ipairs(part:GetChildren()) do
-                            if ch:IsA("ProximityPrompt") and not seen[ch] then
-                                seen[ch] = true
-                                table.insert(all, makeResult(ch, pos, part.Name,
-                                    (pos - center).Magnitude, 2))
-                            end
-                        end
-                    end
-                end
-            end
-            -- Pass 3 collect
-            for _, part in ipairs(parts) do
-                local par = part.Parent
-                if not par then continue end
-                local pos = getObjPos(par)
-                if not pos or (pos - center).Magnitude > radius then continue end
-                for _, gui in ipairs(par:GetChildren()) do
-                    if gui:IsA("BillboardGui") or gui:IsA("SurfaceGui") then
-                        for _, tc in ipairs(gui:GetDescendants()) do
-                            if (tc:IsA("TextLabel") or tc:IsA("TextButton"))
-                                and hasKeyword(tc.Text) then
-                                for _, dc in ipairs(par:GetDescendants()) do
-                                    if dc:IsA("ProximityPrompt") and not seen[dc] then
-                                        seen[dc] = true
-                                        table.insert(all, makeResult(dc, pos, tc.Text,
-                                            (pos - center).Magnitude, 3))
-                                    end
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
+        if ok and parts and #parts > 0 then
+            local results = Scanner.filterParts(parts, centerPos)
+            if #results > 0 then
+                return results, false
             end
         end
     end
-    table.sort(all, function(a, b) return a.dist < b.dist end)
-    return all
+
+    -- FALLBACK METHOD: GetDescendants (only after all radii fail)
+    local maxRadius = CONFIG.SCAN_RADII[#CONFIG.SCAN_RADII]
+    local results = Scanner.fallbackScan(centerPos, maxRadius)
+    return results, true
 end
 
---- Adaptive wait scan (streaming-aware)
---- Loops every 0.2s, max 5s timeout, exits early when found
-function Scanner.adaptiveScan(center, onTick)
-    local elapsed = 0
-    while elapsed < SCAN_TIMEOUT do
-        if state.stopped then return nil end
-        if onTick then onTick(elapsed) end
-        local r = Scanner.scanAll(center)
-        if r then return r end
-        task.wait(SCAN_INTERVAL)
-        elapsed = elapsed + SCAN_INTERVAL
-    end
-    return nil
-end
+-- ═══════════════════════════════════════════════════════════════
+-- CLAIM MODULE
+-- ═══════════════════════════════════════════════════════════════
 
---- Adaptive wait scan — multi-target variant
-function Scanner.adaptiveScanMulti(center, onTick)
-    local elapsed = 0
-    while elapsed < SCAN_TIMEOUT do
-        if state.stopped then return {} end
-        if onTick then onTick(elapsed) end
-        local results = Scanner.scanAllTargets(center)
-        if #results > 0 then return results end
-        task.wait(SCAN_INTERVAL)
-        elapsed = elapsed + SCAN_INTERVAL
-    end
-    return {}
-end
+local Claimer = {}
 
--- ════════════════════════════════════════════════════════════
--- NAVIGATOR
--- ════════════════════════════════════════════════════════════
+--- Attempt to claim a single target with retries and alternative positioning
+---@param target table
+---@param hrp BasePart
+---@return boolean success
+local function claimSingleTarget(target, hrp)
+    local targetPos = target.position
+    local dir = (hrp.Position - targetPos)
+    local dirMag = dir.Magnitude
 
-local Nav = {}
+    -- Calculate safe position (offset from target)
+    local offset = dirMag > 0.1
+        and dir.Unit * CONFIG.SAFE_DISTANCE
+        or Vector3.new(0, 0, CONFIG.SAFE_DISTANCE)
+    local safePos = targetPos + offset + Vector3.new(0, CONFIG.TP_OFFSET_Y, 0)
 
-function Nav.getChar()
-    local char = player.Character
-    if not char then char = player.CharacterAdded:Wait(10) end
-    if not char then return nil, nil, nil end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then hrp = char:WaitForChild("HumanoidRootPart", 5) end
-    if not hrp then return char, nil, nil end
-    return char, hrp, char:FindFirstChildOfClass("Humanoid")
-end
+    -- Move to safe position
+    hrp.CFrame = CFrame.new(safePos)
+    task.wait(0.15)
 
-function Nav.tpTo(pos)
-    local _, hrp = Nav.getChar()
-    if not hrp then return false end
-    for _ = 1, TP_RETRIES do
-        if state.stopped then return false end
-        hrp.CFrame = CFrame.new(pos + Vector3.new(0, 5, 0))
-        task.wait(0.2)
-        if (hrp.Position - pos).Magnitude < 25 then return true end
-        hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-        task.wait(0.15)
-    end
-    return (hrp.Position - pos).Magnitude < 50
-end
-
---- Fire prompts with multi-target + retry support
---- Does NOT blindly break on first result
-function Nav.firePrompts(results, onAttempt)
-    if not results or #results == 0 then return 0 end
-    local _, hrp, hum = Nav.getChar()
-    if not hrp then return 0 end
-    if hum then hum.WalkSpeed = 16 end
-
-    local fired = 0
-    for _, r in ipairs(results) do
-        if state.stopped then break end
-        -- Position character near prompt (7 stud away + elevated)
-        local dir = hrp.Position - r.pos
-        local offset = dir.Magnitude > 0.1 and dir.Unit * 7 or Vector3.new(0, 0, 7)
-        hrp.CFrame = CFrame.new(r.pos + offset + Vector3.new(0, 3, 0))
-        task.wait(0.15)
-
-        for retry = 1, PROMPT_RETRIES do
-            if state.stopped then break end
-            if onAttempt then onAttempt(r, retry) end
-            if safeFire(r.prompt) then
-                fired = fired + 1
-                break
-            end
-            task.wait(0.08)
+    -- Retry firing the prompt
+    for attempt = 1, CONFIG.CLAIM_RETRY_COUNT do
+        if State.stopped then return false end
+        if safeFirePrompt(target.prompt) then
+            return true
         end
-        -- Small gap between targets
-        if fired > 0 then task.wait(0.1) end
+        task.wait(CONFIG.CLAIM_RETRY_DELAY)
     end
-    return fired
+
+    -- Alternative approach: get closer
+    local approachDir = (targetPos - hrp.Position)
+    if approachDir.Magnitude > 0 then
+        hrp.CFrame = CFrame.new(hrp.Position + approachDir.Unit * 3)
+        task.wait(0.12)
+        if safeFirePrompt(target.prompt) then
+            return true
+        end
+    end
+
+    -- Final attempt: directly at position + small Y offset
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    task.wait(0.1)
+    if safeFirePrompt(target.prompt) then
+        return true
+    end
+
+    return false
 end
 
---- Process a single CP: teleport → adaptive scan → fire
-function Nav.processCP(idx, setStatus, setProgress)
-    if not CP[idx] then return false, false end
-    local pt = CP[idx]
-    state.currentCP = idx
+--- Claim from a list of candidates (tries multiple if needed)
+---@param results table
+---@param hrp BasePart
+---@return number claimedCount
+function Claimer.claim(results, hrp)
+    if not results or #results == 0 then
+        return 0
+    end
 
-    setStatus("CP " .. idx .. "/" .. #CP .. " — TELEPORTING", "wait")
-    setProgress(idx, #CP)
+    local maxCandidates = math.min(#results, CONFIG.MAX_CLAIM_CANDIDATES)
+    local claimedCount = 0
 
-    if not Nav.tpTo(pt) then
-        setStatus("CP " .. idx .. " — TP FAILED", "err")
+    for i = 1, maxCandidates do
+        if State.stopped then break end
+
+        local target = results[i]
+        if not target.prompt or not target.prompt.Parent then
+            continue
+        end
+
+        local success = claimSingleTarget(target, hrp)
+        if success then
+            claimedCount = claimedCount + 1
+            -- Found a working target, no need to try more
+            break
+        end
+    end
+
+    return claimedCount
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- NAVIGATION MODULE
+-- ═══════════════════════════════════════════════════════════════
+
+local Navigator = {}
+
+--- Teleport to a position with retries
+---@param targetPos Vector3
+---@param hrp BasePart
+---@return boolean success
+function Navigator.teleportTo(targetPos, hrp)
+    for attempt = 1, CONFIG.TP_RETRY_COUNT do
+        if State.stopped then return false end
+
+        local offset = Vector3.new(0, CONFIG.TP_OFFSET_Y, 0)
+        hrp.CFrame = CFrame.new(targetPos + offset)
+        task.wait(CONFIG.TP_RETRY_DELAY)
+
+        if (hrp.Position - targetPos).Magnitude < 25 then
+            return true
+        end
+    end
+    return false
+end
+
+--- Adaptive scan: poll until found or timeout
+---@param centerPos Vector3
+---@return table results, boolean usedFallback
+function Navigator.adaptiveScan(centerPos)
+    local startTime = tick()
+
+    while not State.stopped do
+        local elapsed = tick() - startTime
+        if elapsed > CONFIG.SCAN_TIMEOUT then
+            break
+        end
+
+        local results, usedFallback = Scanner.scan(centerPos)
+        if results and #results > 0 then
+            return results, usedFallback
+        end
+
+        task.wait(CONFIG.SCAN_INTERVAL)
+    end
+
+    return {}, false
+end
+
+--- Process a single checkpoint (teleport + scan + optional claim)
+---@param idx number
+---@param hrp BasePart
+---@param hum Humanoid
+---@param withScan boolean
+---@return boolean ok, boolean found
+function Navigator.processCP(idx, hrp, hum, withScan)
+    local cp = CP_LIST[idx]
+    if not cp then return false, false end
+
+    State.currentCP = idx
+    Navigator.updateHighlight(idx)
+    Navigator.updateStatus(CONFIG.MSG_TELEPORTING .. " CP" .. idx .. "/" .. #CP_LIST, "warning")
+    Navigator.updateProgress(idx, #CP_LIST)
+
+    -- Teleport
+    local tpOk = Navigator.teleportTo(cp, hrp)
+    if not tpOk then
+        Navigator.updateStatus(CONFIG.MSG_ERROR .. " (TP FAIL)", "error")
         return false, false
     end
 
-    -- Adaptive scan (streaming-aware, no fixed delay)
-    local results = Scanner.adaptiveScanMulti(pt, function(elapsed)
-        setStatus("CP " .. idx .. " — SCANNING " .. string.format("%.1f", elapsed) .. "s", "wait")
-    end)
-
-    if state.stopped then return false, false end
-
-    if #results == 0 then
-        setStatus("CP " .. idx .. " — NO TARGET", "idle")
+    if not withScan then
         return true, false
     end
 
-    setStatus("⚡ " .. #results .. " TARGET(s) AT CP" .. idx, "found")
+    if State.stopped then return false, false end
 
-    local fired = Nav.firePrompts(results, function(r, retry)
-        setStatus("CP " .. idx .. " — FIRE [" .. retry .. "/" .. PROMPT_RETRIES .. "]", "found")
-    end)
+    -- Adaptive scan (replaces fixed delay)
+    Navigator.updateStatus(CONFIG.MSG_SCANNING .. " CP" .. idx, "scanning")
+    local results = Navigator.adaptiveScan(cp)
 
-    if fired > 0 then
-        setStatus("✓ CLAIMED " .. fired .. " AT CP" .. idx, "done")
-        notify("Zihan Navigator", "Claimed " .. fired .. " at CP" .. idx)
-        return true, true
+    if State.stopped then return false, false end
+
+    if results and #results > 0 then
+        local dist = math.floor(results[1].distance)
+        Navigator.updateStatus(CONFIG.MSG_FOUND .. " CP" .. idx .. " (" .. dist .. "s)", "found")
+
+        if hum then hum.WalkSpeed = 16 end
+        task.wait(0.1)
+
+        Navigator.updateStatus(CONFIG.MSG_CLAIMING .. "...", "claiming")
+        local claimed = Claimer.claim(results, hrp)
+
+        if claimed > 0 then
+            Navigator.updateStatus(CONFIG.MSG_CLAIMED .. " @ CP" .. idx, "success")
+            sendNotification("Yuhu", "GoPay claimed at CP" .. idx .. "!", 5)
+            return true, true
+        end
+
+        -- Claim failed despite finding target
+        Navigator.updateStatus("CLAIM FAIL CP" .. idx, "error")
+        task.wait(0.3)
+        return true, false
     end
 
-    setStatus("CP " .. idx .. " — FIRE FAILED", "err")
     return true, false
 end
 
---- Auto: CP1 → CP2 → ... → Last CP → STOP
-function Nav.runAuto(fromCP, setStatus, setProgress, onCP, onDone)
-    if state.running then return end
-    state.running = true
-    state.stopped = false
+--- Run final claim sequence (if CLAIM_POINT is set)
+---@param hrp BasePart
+---@param hum Humanoid
+function Navigator.runFinalClaim(hrp, hum)
+    if not CLAIM_POINT then
+        Navigator.updateStatus(CONFIG.MSG_COMPLETE, "success")
+        sendNotification("Yuhu", "All checkpoints scanned.", 4)
+        return
+    end
 
-    task.spawn(function()
-        local _, _, hum = Nav.getChar()
-        if not hum then
-            setStatus("ERROR — NO CHARACTER", "err")
-            state.running = false
+    Navigator.updateStatus(CONFIG.MSG_FINAL, "warning")
+    if hum then hum.WalkSpeed = 0 end
+
+    Navigator.teleportTo(CLAIM_POINT, hrp)
+    task.wait(0.3)
+
+    if State.stopped then return end
+
+    if hum then hum.WalkSpeed = 16 end
+    task.wait(0.1)
+
+    Navigator.updateStatus(CONFIG.MSG_SCANNING, "scanning")
+    local results = Navigator.adaptiveScan(CLAIM_POINT)
+
+    if results and #results > 0 then
+        Navigator.updateStatus(CONFIG.MSG_CLAIMING, "claiming")
+        local claimed = Claimer.claim(results, hrp)
+        if claimed > 0 then
+            Navigator.updateStatus(CONFIG.MSG_CLAIMED, "success")
+            sendNotification("Yuhu", "Final claim successful!", 4)
             return
         end
-        hum.WalkSpeed = 0
+    end
 
-        local from = math.clamp(fromCP or 1, 1, #CP)
+    -- Jump fallback
+    if hum then hum.Jump = true end
+    task.wait(0.15)
 
-        for i = from, #CP do
-            if state.stopped then
-                setStatus("■ STOPPED AT CP" .. i, "err")
-                state.running = false
-                if onDone then onDone(false) end
-                return
-            end
+    local r2 = Navigator.adaptiveScan(CLAIM_POINT)
+    if r2 and #r2 > 0 then
+        Claimer.claim(r2, hrp)
+    end
 
-            if onCP then onCP(i) end
-
-            local ok, found = Nav.processCP(i, setStatus, setProgress)
-            if not ok then
-                state.running = false
-                if onDone then onDone(false) end
-                return
-            end
-            if found then
-                state.running = false
-                if onDone then onDone(true) end
-                return
-            end
-            -- No target → continue to next CP
-        end
-
-        -- All CP scanned, stop automatically
-        setStatus("✓ ALL " .. #CP .. " CP SCANNED — DONE", "done")
-        notify("Zihan Navigator", "All " .. #CP .. " checkpoints scanned.")
-        state.running = false
-        if onDone then onDone(false) end
-    end)
+    Navigator.updateStatus(CONFIG.MSG_COMPLETE, "success")
+    sendNotification("Yuhu", "Done! Claim voucher manually if needed.", 4)
 end
 
---- Manual: teleport to specific CP + scan
-function Nav.runManual(idx, setStatus, setProgress, onCP)
-    if state.running then return end
-    state.running = true
-    state.stopped = false
+--- Run auto CP sequence from a starting index
+---@param fromIdx number
+function Navigator.runAutoCP(fromIdx)
+    if State.running then return end
+    State.running = true
+    State.stopped = false
 
     task.spawn(function()
-        local _, _, hum = Nav.getChar()
-        if not hum then
-            setStatus("ERROR — NO CHARACTER", "err")
-            state.running = false
-            return
-        end
-        hum.WalkSpeed = 0
-
-        if onCP then onCP(idx) end
-        local ok, found = Nav.processCP(idx, setStatus, setProgress)
-        if not found and ok then
-            setStatus("CP " .. idx .. " — NO TARGET", "idle")
-        end
-
-        hum.WalkSpeed = 16
-        state.running = false
-    end)
-end
-
---- Claim: scan at last CP position
-function Nav.runClaim(setStatus, setProgress)
-    if state.running then return end
-    state.running = true
-    state.stopped = false
-
-    task.spawn(function()
-        local _, hrp, hum = Nav.getChar()
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 10)
         if not hrp then
-            setStatus("ERROR — NO CHARACTER", "err")
-            state.running = false
+            Navigator.updateStatus(CONFIG.MSG_ERROR .. " (NO HRP)", "error")
+            State.running = false
             return
         end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
         if hum then hum.WalkSpeed = 0 end
 
-        local targetPos = #CP > 0 and CP[#CP] or hrp.Position
-        setStatus("CLAIM — TELEPORTING TO LAST CP", "wait")
-        setProgress(#CP, #CP)
+        local startIdx = math.clamp(fromIdx or 1, 1, #CP_LIST)
 
-        Nav.tpTo(targetPos)
-        task.wait(0.3)
+        for i = startIdx, #CP_LIST do
+            if State.stopped then
+                Navigator.updateStatus(CONFIG.MSG_STOPPED, "error")
+                State.running = false
+                return
+            end
 
-        if state.stopped then
-            state.running = false
+            local ok, found = Navigator.processCP(i, hrp, hum, true)
+            if not ok then
+                State.running = false
+                return
+            end
+            -- If found, stop entire sequence
+            if found then
+                State.running = false
+                return
+            end
+            -- Not found at this CP, continue to next
+        end
+
+        -- All CPs checked without finding GoPay
+        if not State.stopped then
+            Navigator.runFinalClaim(hrp, hum)
+        end
+
+        State.running = false
+    end)
+end
+
+--- Run claim-only mode (skip CP scanning)
+function Navigator.runClaimOnly()
+    if State.running then return end
+    State.running = true
+    State.stopped = false
+
+    task.spawn(function()
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 10)
+        if not hrp then
+            Navigator.updateStatus(CONFIG.MSG_ERROR .. " (NO HRP)", "error")
+            State.running = false
             return
         end
 
-        setStatus("CLAIM — SCANNING", "wait")
-        local results = Scanner.adaptiveScanMulti(targetPos, function(elapsed)
-            setStatus("CLAIM — SCANNING " .. string.format("%.1f", elapsed) .. "s", "wait")
-        end)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        Navigator.runFinalClaim(hrp, hum)
+        State.running = false
+    end)
+end
 
-        if #results > 0 then
-            setStatus("⚡ " .. #results .. " TARGET(s) FOUND", "found")
-            local fired = Nav.firePrompts(results)
-            if fired > 0 then
-                setStatus("✓ CLAIMED " .. fired, "done")
-                notify("Zihan Navigator", "Claimed " .. fired .. " target(s)!")
-            else
-                setStatus("CLAIM — FIRE FAILED", "err")
-            end
-        else
-            setStatus("CLAIM — NO TARGET FOUND", "idle")
+--- Go to a specific CP manually
+---@param idx number
+function Navigator.runGotoCPManual(idx)
+    if State.running then return end
+    State.running = true
+    State.stopped = false
+
+    task.spawn(function()
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 10)
+        if not hrp then
+            Navigator.updateStatus(CONFIG.MSG_ERROR .. " (NO HRP)", "error")
+            State.running = false
+            return
+        end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 0 end
+
+        local ok, found = Navigator.processCP(idx, hrp, hum, true)
+
+        if not found then
+            Navigator.updateStatus("CP" .. idx .. " — " .. CONFIG.MSG_NOT_FOUND, "success")
         end
 
         if hum then hum.WalkSpeed = 16 end
-        state.running = false
+        State.running = false
     end)
 end
 
--- ════════════════════════════════════════════════════════════
--- GUI — CYBER FUTURISTIC
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- GUI MODULE (CYBER FUTURISTIC)
+-- ═══════════════════════════════════════════════════════════════
 
 local GUI = {}
-local R = {} -- refs
 
---- Helper: create element with stroke + corner in one call
-local function el(class, props)
-    local inst = Instance.new(class)
-    for k, v in pairs(props) do
-        if k ~= "Corner" and k ~= "Stroke" and k ~= "Children" then
-            pcall(function() inst[k] = v end)
+function GUI.createCorner(parent, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 6)
+    corner.Parent = parent
+    return corner
+end
+
+function GUI.createStroke(parent, color, thickness)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color or CONFIG.COLORS.BORDER
+    stroke.Thickness = thickness or 1
+    stroke.Parent = parent
+    return stroke
+end
+
+function GUI.createLabel(parent, props)
+    local label = Instance.new("TextLabel")
+    label.Size = props.size or UDim2.new(1, 0, 0, 14)
+    label.Position = props.position or UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = props.text or ""
+    label.TextColor3 = props.color or CONFIG.COLORS.TEXT_PRIMARY
+    label.Font = props.font or Enum.Font.GothamBold
+    label.TextSize = props.fontSize or 10
+    label.TextXAlignment = props.xAlign or Enum.TextXAlignment.Left
+    label.TextTruncate = Enum.TextTruncate.AtEnd
+    label.ZIndex = props.zIndex or 13
+    label.Parent = parent
+    return label
+end
+
+function GUI.tweenProperty(element, property, target, duration)
+    if not element or not element.Parent then return nil end
+    local tween = TweenService:Create(
+        element,
+        TweenInfo.new(duration or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {[property] = target}
+    )
+    tween:Play()
+    return tween
+end
+
+--- Update status text and color
+function Navigator.updateStatus(msg, statusType)
+    local el = State.guiElements
+    if not el.statusLabel then return end
+
+    el.statusLabel.Text = msg
+
+    local colorMap = {
+        success = CONFIG.COLORS.SUCCESS,
+        error = CONFIG.COLORS.ERROR,
+        warning = CONFIG.COLORS.WARNING,
+        found = CONFIG.COLORS.ACCENT_GLOW,
+        scanning = CONFIG.COLORS.ACCENT,
+        claiming = CONFIG.COLORS.ACCENT,
+        ready = CONFIG.COLORS.SUCCESS,
+    }
+
+    local col = colorMap[statusType] or CONFIG.COLORS.TEXT_PRIMARY
+    GUI.tweenProperty(el.statusLabel, "TextColor3", col, 0.15)
+
+    if el.statusDot then
+        GUI.tweenProperty(el.statusDot, "BackgroundColor3", col, 0.15)
+    end
+end
+
+--- Update progress bar
+function Navigator.updateProgress(current, total)
+    local el = State.guiElements
+    if not el.progressFill then return end
+
+    local pct = math.clamp(current / total, 0, 1)
+    GUI.tweenProperty(el.progressFill, "Size", UDim2.new(pct, 0, 1, 0), 0.25)
+
+    if el.progressText then
+        el.progressText.Text = current .. " / " .. total
+        local pCol = pct >= 1 and CONFIG.COLORS.SUCCESS
+            or pct > 0.5 and CONFIG.COLORS.WARNING
+            or CONFIG.COLORS.TEXT_DIM
+        GUI.tweenProperty(el.progressText, "TextColor3", pCol, 0.15)
+    end
+end
+
+--- Highlight active CP in grid
+function Navigator.updateHighlight(idx)
+    for i, btn in ipairs(State.cpButtons) do
+        local active = (i == idx)
+        local bgTarget = active and CONFIG.COLORS.CP_ACTIVE_BG or CONFIG.COLORS.CP_INACTIVE_BG
+        local txtTarget = active and CONFIG.COLORS.TEXT_PRIMARY or CONFIG.COLORS.TEXT_DIM
+        local brdTarget = active and CONFIG.COLORS.CP_ACTIVE_BORDER or CONFIG.COLORS.BORDER
+
+        GUI.tweenProperty(btn, "BackgroundColor3", bgTarget, 0.12)
+        GUI.tweenProperty(btn, "TextColor3", txtTarget, 0.12)
+
+        local stroke = btn:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            GUI.tweenProperty(stroke, "Color", brdTarget, 0.12)
         end
     end
-    if props.Corner then
-        local c = Instance.new("UICorner")
-        c.CornerRadius = type(props.Corner) == "UDim" and props.Corner or UDim.new(0, props.Corner)
-        c.Parent = inst
-    end
-    if props.Stroke then
-        local s = Instance.new("UIStroke")
-        if type(props.Stroke) == "table" then
-            for k, v in pairs(props.Stroke) do s[k] = v end
-        else
-            s.Color = props.Stroke
-        end
-        s.Parent = inst
-    end
-    if props.Children then
-        for _, ch in ipairs(props.Children) do ch.Parent = inst end
-    end
-    return inst
-end
 
---- Status colors map
-local STATUS_COL = {
-    done  = T.NEON_GREEN,
-    err   = T.NEON_RED,
-    wait  = T.NEON_YELLOW,
-    found = T.NEON_CYAN,
-    idle  = T.TXT_MID,
-}
-
-function GUI.setStatus(msg, typ)
-    if not R.svTxt then return end
-    local c = STATUS_COL[typ] or T.TXT_PRI
-    R.svTxt.Text = msg
-    R.svTxt.TextColor3 = c
-    R.svDot.BackgroundColor3 = c
-    R.svGlow.BackgroundColor3 = c
-end
-
-function GUI.setProgress(cur, total)
-    if not R.pFill then return end
-    local pct = math.clamp(cur / math.max(total, 1), 0, 1)
-    TweenService:Create(R.pFill, TweenInfo.new(0.2), {Size = UDim2.new(pct, 0, 1, 0)}):Play()
-    TweenService:Create(R.pGlow, TweenInfo.new(0.2), {Size = UDim2.new(pct, 0, 1, 5)}):Play()
-    R.pTxt.Text = cur .. " / " .. total
-    R.pTxt.TextColor3 = pct >= 1 and T.NEON_GREEN or pct > 0.5 and T.NEON_YELLOW or T.TXT_DIM
-end
-
-function GUI.highlightCP(idx)
-    for i, btn in ipairs(R.cpBtns or {}) do
-        local active = i == idx
-        btn.BackgroundColor3 = active and T.BG_CARD or T.BG_INPUT
-        btn.TextColor3 = active and T.NEON_CYAN or T.TXT_DIM
-        local s = btn:FindFirstChildOfClass("UIStroke")
-        if s then s.Color = active and T.NEON_CYAN or T.BORDER end
-    end
-    -- Auto-scroll to active CP
-    if R.cpBtns[idx] and R.cpScroll then
+    -- Auto-scroll to active CP button
+    if State.cpButtons[idx] then
         task.defer(function()
-            local cols = math.floor((R.cpScroll.AbsoluteSize.X - 8) / 41)
-            cols = math.max(cols, 1)
-            local row = math.floor((idx - 1) / cols)
-            local rowH = 29
-            R.cpScroll.CanvasPosition = Vector2.new(0, math.max(0, (row - 1) * rowH))
+            local btn = State.cpButtons[idx]
+            local scroll = btn.Parent
+            if not scroll or not scroll:IsA("ScrollingFrame") then return end
+
+            local btnAbsY = btn.AbsolutePosition.Y
+            local scrollAbsY = scroll.AbsolutePosition.Y
+            local relativeY = btnAbsY - scrollAbsY
+            local viewH = scroll.AbsoluteSize.Y
+
+            if relativeY < 0 or relativeY > viewH - 30 then
+                local cellH = 26 + 3
+                local cols = math.max(1, math.floor((scroll.AbsoluteSize.X - 8) / (38 + 3)))
+                local row = math.floor((idx - 1) / cols)
+                scroll.CanvasPosition = Vector2.new(0, math.max(0, (row - 1) * cellH))
+            end
         end)
     end
 end
 
-function GUI.setupPinch(container)
-    local base = container.Size
-    local touches = {}
-    local pinching = false
-    local initDist, initScale = 0, 1
-    local MIN_S, MAX_S = 0.5, 2.5
-
-    local function count() local n = 0; for _ in pairs(touches) do n = n + 1 end; return n end
-    local function list() local t = {}; for _, v in pairs(touches) do table.insert(t, v) end; return t end
-
-    UIS.TouchStarted:Connect(function(t, g) if not g then touches[t] = t.Position end end)
-    UIS.TouchMoved:Connect(function(t, g)
-        if g then return end
-        touches[t] = t.Position
-        local pts = list()
-        if #pts == 2 then
-            local d = (pts[1] - pts[2]).Magnitude
-            if not pinching then
-                pinching = true; initDist = d; initScale = state.guiScale
-            elseif initDist > 10 then
-                local ns = math.clamp(initScale * (d / initDist), MIN_S, MAX_S)
-                state.guiScale = ns
-                local nw, nh = base.X.Offset * ns, base.Y.Offset * ns
-                local cx = container.Position.X.Offset + container.Size.X.Offset / 2
-                local cy = container.Position.Y.Offset + container.Size.Y.Offset / 2
-                TweenService:Create(container, TweenInfo.new(0.06), {
-                    Size = UDim2.new(0, nw, 0, nh),
-                    Position = UDim2.new(0, cx - nw / 2, 0, cy - nh / 2),
-                }):Play()
-            end
+--- Build the entire GUI
+function GUI.build()
+    -- Remove existing
+    pcall(function()
+        for _, g in ipairs(player.PlayerGui:GetChildren()) do
+            if g.Name == "ZihanV6" then g:Destroy() end
         end
     end)
-    UIS.TouchEnded:Connect(function(t, g)
-        if not g then touches[t] = nil end
-        if count() < 2 then pinching = false; initDist = 0 end
-    end)
-    UIS.TouchCancelled:Connect(function(t, g)
-        if not g then touches[t] = nil end
-        if count() < 2 then pinching = false; initDist = 0 end
-    end)
-end
 
-function GUI.build()
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "ZihanNavigator"
-    sg.ResetOnSpawn = false
-    sg.DisplayOrder = 9999
-    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.Parent = player.PlayerGui
-    R.sg = sg
+    -- ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ZihanV6"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 9999
+    screenGui.IgnoreGuiInset = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = player.PlayerGui
+    State.screenGui = screenGui
 
-    -- Outer container (for pinch scaling)
-    local container = Instance.new("Frame")
-    container.Name = "Container"
-    container.Size = UDim2.new(0, 280, 0, 358)
-    container.Position = UDim2.new(0.5, -140, 0.5, -179)
-    container.BackgroundTransparency = 1
-    container.ZIndex = 10
-    container.Parent = sg
-    R.container = container
+    -- ═══ MAIN PANEL ═══
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, CONFIG.GUI_WIDTH, 0, CONFIG.GUI_HEIGHT)
+    panel.Position = UDim2.new(0.5, -CONFIG.GUI_WIDTH / 2, 0.5, -CONFIG.GUI_HEIGHT / 2)
+    panel.BackgroundColor3 = CONFIG.COLORS.PANEL
+    panel.BorderSizePixel = 0
+    panel.Active = true
+    panel.Draggable = true
+    panel.ZIndex = 10
+    panel.Parent = screenGui
 
-    -- Panel (draggable)
-    local panel = el("Frame", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundColor3 = T.BG_PANEL,
-        Active = true, Draggable = true, ZIndex = 11,
-        Corner = UDim.new(0, 10),
-        Stroke = {Color = T.BORDER, Thickness = 1},
+    GUI.createCorner(panel, 10)
+    GUI.createStroke(panel, CONFIG.COLORS.BORDER, 1)
+
+    -- Top accent line
+    local accentLine = Instance.new("Frame")
+    accentLine.Size = UDim2.new(0.5, 0, 0, 2)
+    accentLine.Position = UDim2.new(0.25, 0, 0, 0)
+    accentLine.BackgroundColor3 = CONFIG.COLORS.ACCENT
+    accentLine.BorderSizePixel = 0
+    accentLine.ZIndex = 15
+    GUI.createCorner(accentLine, 1)
+    accentLine.Parent = panel
+
+    -- ═══ HEADER (h=40) ═══
+    local headerH = 40
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, headerH)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.BackgroundColor3 = CONFIG.COLORS.HEADER
+    header.BorderSizePixel = 0
+    header.ZIndex = 11
+    GUI.createCorner(header, 10)
+    -- Bottom corner fix
+    local headerBottom = Instance.new("Frame")
+    headerBottom.Size = UDim2.new(1, 0, 0, 6)
+    headerBottom.Position = UDim2.new(0, 0, 1, -6)
+    headerBottom.BackgroundColor3 = CONFIG.COLORS.HEADER
+    headerBottom.BorderSizePixel = 0
+    headerBottom.ZIndex = 11
+    headerBottom.Parent = header
+    -- Separator
+    local headerSep = Instance.new("Frame")
+    headerSep.Size = UDim2.new(1, 0, 0, 1)
+    headerSep.Position = UDim2.new(0, 0, 1, -1)
+    headerSep.BackgroundColor3 = CONFIG.COLORS.BORDER
+    headerSep.BorderSizePixel = 0
+    headerSep.ZIndex = 12
+    headerSep.Parent = header
+
+    -- Title
+    GUI.createLabel(header, {
+        size = UDim2.new(1, -42, 0, 15),
+        position = UDim2.new(0, 11, 0, 7),
+        text = CONFIG.TITLE,
+        color = CONFIG.COLORS.TEXT_PRIMARY,
+        fontSize = 11,
+        zIndex = 13,
     })
-    panel.Parent = container
-    R.panel = panel
 
-    -- ─── NEON TOP ACCENT ───
-    el("Frame", {
-        Size = UDim2.new(0.55, 0, 0, 2),
-        Position = UDim2.new(0.225, 0, 0, 0),
-        BackgroundColor3 = T.NEON_CYAN,
-        ZIndex = 15,
-        Corner = UDim.new(0, 1),
-    }).Parent = panel
-
-    -- Accent glow
-    el("Frame", {
-        Size = UDim2.new(0.55, 10, 0, 8),
-        Position = UDim2.new(0.225, -5, 0, -3),
-        BackgroundColor3 = T.NEON_CYAN,
-        BackgroundTransparency = 0.82,
-        ZIndex = 14,
-        Corner = UDim.new(0, 4),
-    }).Parent = panel
-
-    -- ─── TITLE BAR ───
-    local tb = el("Frame", {
-        Size = UDim2.new(1, 0, 0, 34),
-        Position = UDim2.new(0, 0, 0, 3),
-        BackgroundTransparency = 1, ZIndex = 12,
+    -- Subtitle
+    GUI.createLabel(header, {
+        size = UDim2.new(1, -42, 0, 11),
+        position = UDim2.new(0, 11, 0, 22),
+        text = CONFIG.SUBTITLE,
+        color = CONFIG.COLORS.TEXT_DIM,
+        font = Enum.Font.Gotham,
+        fontSize = 7,
+        zIndex = 13,
     })
-    tb.Parent = panel
-
-    el("TextLabel", {
-        Size = UDim2.new(0, 12, 0, 12),
-        Position = UDim2.new(0, 10, 0.5, -8),
-        BackgroundTransparency = 1,
-        Text = "◈", TextColor3 = T.NEON_CYAN,
-        Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 13,
-    }).Parent = tb
-
-    el("TextLabel", {
-        Size = UDim2.new(1, -58, 0, 13),
-        Position = UDim2.new(0, 26, 0.5, -8),
-        BackgroundTransparency = 1,
-        Text = "ZIHAN NAVIGATOR", TextColor3 = T.TXT_PRI,
-        Font = Enum.Font.GothamBold, TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13,
-    }).Parent = tb
-
-    el("TextLabel", {
-        Size = UDim2.new(1, -58, 0, 10),
-        Position = UDim2.new(0, 26, 0.5, 5),
-        BackgroundTransparency = 1,
-        Text = "CYBER EDITION  ·  STREAMING-AWARE",
-        TextColor3 = T.TXT_DIM,
-        Font = Enum.Font.Gotham, TextSize = 7,
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13,
-    }).Parent = tb
 
     -- Close button
-    local xb = el("TextButton", {
-        Size = UDim2.new(0, 22, 0, 22),
-        Position = UDim2.new(1, -28, 0.5, -11),
-        BackgroundColor3 = T.BG_INPUT,
-        Text = "✕", TextColor3 = T.TXT_DIM,
-        Font = Enum.Font.GothamBold, TextSize = 9,
-        AutoButtonColor = false, ZIndex = 14,
-        Corner = 5,
-        Stroke = {Color = T.BORDER},
-    })
-    xb.Parent = tb
-    xb.MouseEnter:Connect(function()
-        xb.TextColor3 = T.NEON_RED
-        xb.UIStroke.Color = T.NEON_RED
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 24, 0, 24)
+    closeBtn.Position = UDim2.new(1, -29, 0, 8)
+    closeBtn.BackgroundColor3 = CONFIG.COLORS.CARD
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = CONFIG.COLORS.TEXT_DIM
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 10
+    closeBtn.BorderSizePixel = 0
+    closeBtn.ZIndex = 14
+    closeBtn.AutoButtonColor = false
+    GUI.createCorner(closeBtn, 5)
+    GUI.createStroke(closeBtn, CONFIG.COLORS.BORDER)
+    closeBtn.Parent = header
+
+    closeBtn.MouseEnter:Connect(function()
+        GUI.tweenProperty(closeBtn, "TextColor3", CONFIG.COLORS.ERROR, 0.1)
+        GUI.tweenProperty(closeBtn, "BackgroundColor3", CONFIG.COLORS.BTN_STOP_BG, 0.1)
     end)
-    xb.MouseLeave:Connect(function()
-        xb.TextColor3 = T.TXT_DIM
-        xb.UIStroke.Color = T.BORDER
+    closeBtn.MouseLeave:Connect(function()
+        GUI.tweenProperty(closeBtn, "TextColor3", CONFIG.COLORS.TEXT_DIM, 0.1)
+        GUI.tweenProperty(closeBtn, "BackgroundColor3", CONFIG.COLORS.CARD, 0.1)
     end)
-    xb.MouseButton1Click:Connect(function()
+    closeBtn.MouseButton1Click:Connect(function()
+        State.pulsing = false
         TweenService:Create(panel, TweenInfo.new(0.15), {
-            Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+            Size = UDim2.new(0, CONFIG.GUI_WIDTH, 0, 0),
         }):Play()
-        task.delay(0.16, function() sg:Destroy() end)
+        task.delay(0.16, function()
+            if screenGui and screenGui.Parent then
+                screenGui:Destroy()
+            end
+        end)
     end)
 
-    -- ─── STATUS BAR ───
-    local sf = el("Frame", {
-        Size = UDim2.new(1, -20, 0, 24),
-        Position = UDim2.new(0, 10, 0, 40),
-        BackgroundColor3 = T.BG_INPUT, ZIndex = 12,
-        Corner = 5, Stroke = {Color = T.BORDER},
+    -- ═══ STATUS BAR (y=46, h=22) ═══
+    local statusY = headerH + 6
+    local statusH = 22
+    local statusBar = Instance.new("Frame")
+    statusBar.Size = UDim2.new(1, -18, 0, statusH)
+    statusBar.Position = UDim2.new(0, 9, 0, statusY)
+    statusBar.BackgroundColor3 = CONFIG.COLORS.CARD
+    statusBar.BorderSizePixel = 0
+    statusBar.ZIndex = 12
+    GUI.createCorner(statusBar, 5)
+    GUI.createStroke(statusBar, CONFIG.COLORS.BORDER)
+    statusBar.Parent = panel
+
+    -- Status dot
+    local statusDot = Instance.new("Frame")
+    statusDot.Size = UDim2.new(0, 6, 0, 6)
+    statusDot.Position = UDim2.new(0, 7, 0.5, -3)
+    statusDot.BackgroundColor3 = CONFIG.COLORS.SUCCESS
+    statusDot.BorderSizePixel = 0
+    statusDot.ZIndex = 13
+    GUI.createCorner(statusDot, 3)
+    statusDot.Parent = statusBar
+
+    -- Status label
+    local statusLabel = GUI.createLabel(statusBar, {
+        size = UDim2.new(1, -22, 1, 0),
+        position = UDim2.new(0, 18, 0, 0),
+        text = CONFIG.MSG_READY,
+        color = CONFIG.COLORS.SUCCESS,
+        fontSize = 9,
+        zIndex = 13,
     })
-    sf.Parent = panel
+    State.guiElements.statusDot = statusDot
+    State.guiElements.statusLabel = statusLabel
 
-    R.svDot = el("Frame", {
-        Size = UDim2.new(0, 6, 0, 6),
-        Position = UDim2.new(0, 8, 0.5, -3),
-        BackgroundColor3 = T.NEON_GREEN,
-        ZIndex = 13, Corner = UDim.new(1, 0),
-    })
-    R.svDot.Parent = sf
+    -- ═══ PROGRESS BAR (y=72, h=14) ═══
+    local progressY = statusY + statusH + 4
+    local progressH = 14
+    local progressBg = Instance.new("Frame")
+    progressBg.Size = UDim2.new(1, -18, 0, progressH)
+    progressBg.Position = UDim2.new(0, 9, 0, progressY)
+    progressBg.BackgroundColor3 = CONFIG.COLORS.CARD
+    progressBg.BorderSizePixel = 0
+    progressBg.ZIndex = 12
+    GUI.createCorner(progressBg, 4)
+    GUI.createStroke(progressBg, CONFIG.COLORS.BORDER)
+    progressBg.Parent = panel
 
-    R.svGlow = el("Frame", {
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new(0, 3, 0.5, -8),
-        BackgroundColor3 = T.NEON_GREEN,
-        BackgroundTransparency = 0.78,
-        ZIndex = 12, Corner = UDim.new(1, 0),
-    })
-    R.svGlow.Parent = sf
+    local progressFill = Instance.new("Frame")
+    progressFill.Size = UDim2.new(0, 0, 1, 0)
+    progressFill.BackgroundColor3 = CONFIG.COLORS.ACCENT
+    progressFill.BorderSizePixel = 0
+    progressFill.ZIndex = 13
+    GUI.createCorner(progressFill, 3)
+    progressFill.Parent = progressBg
 
-    R.svTxt = el("TextLabel", {
-        Size = UDim2.new(1, -24, 1, 0),
-        Position = UDim2.new(0, 20, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "READY", TextColor3 = T.NEON_GREEN,
-        Font = Enum.Font.GothamBold, TextSize = 9,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13,
-    })
-    R.svTxt.Parent = sf
+    local progressText = Instance.new("TextLabel")
+    progressText.Size = UDim2.new(1, 0, 1, 0)
+    progressText.BackgroundTransparency = 1
+    progressText.Text = "0 / " .. #CP_LIST
+    progressText.TextColor3 = CONFIG.COLORS.TEXT_DIM
+    progressText.Font = Enum.Font.GothamBold
+    progressText.TextSize = 8
+    progressText.TextXAlignment = Enum.TextXAlignment.Center
+    progressText.ZIndex = 14
+    progressText.Parent = progressBg
 
-    -- ─── PROGRESS BAR ───
-    local pf = el("Frame", {
-        Size = UDim2.new(1, -20, 0, 14),
-        Position = UDim2.new(0, 10, 0, 68),
-        BackgroundColor3 = T.BG_DEEP, ZIndex = 12,
-        Corner = UDim.new(0, 7), Stroke = {Color = T.BORDER},
-    })
-    pf.Parent = panel
+    State.guiElements.progressFill = progressFill
+    State.guiElements.progressText = progressText
 
-    R.pGlow = el("Frame", {
-        Size = UDim2.new(0, 0, 1, 5),
-        Position = UDim2.new(0, 0, 0, -2),
-        BackgroundColor3 = T.NEON_CYAN,
-        BackgroundTransparency = 0.65,
-        ZIndex = 12, Corner = UDim.new(0, 7),
-    })
-    R.pGlow.Parent = pf
+    -- ═══ CP GRID (scrollable) ═══
+    local gridY = progressY + progressH + 4
+    -- Calculate available height: panel height - gridY - bottom section
+    local bottomSectionH = 62 -- anti-lag row + buttons + padding
+    local gridH = math.max(50, CONFIG.GUI_HEIGHT - gridY - bottomSectionH)
 
-    R.pFill = el("Frame", {
-        Size = UDim2.new(0, 0, 1, 0),
-        BackgroundColor3 = T.NEON_CYAN, ZIndex = 13,
-        Corner = UDim.new(0, 7),
-    })
-    R.pFill.Parent = pf
+    local cpScroll = Instance.new("ScrollingFrame")
+    cpScroll.Size = UDim2.new(1, -18, 0, gridH)
+    cpScroll.Position = UDim2.new(0, 9, 0, gridY)
+    cpScroll.BackgroundColor3 = CONFIG.COLORS.HEADER
+    cpScroll.BorderSizePixel = 0
+    cpScroll.ScrollBarThickness = 2
+    cpScroll.ScrollBarImageColor3 = CONFIG.COLORS.BORDER_LIGHT
+    cpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    cpScroll.ZIndex = 12
+    cpScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    GUI.createCorner(cpScroll, 6)
+    GUI.createStroke(cpScroll, CONFIG.COLORS.BORDER)
+    cpScroll.Parent = panel
 
-    R.pTxt = el("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text = "0 / " .. #CP, TextColor3 = T.TXT_DIM,
-        Font = Enum.Font.GothamBold, TextSize = 8, ZIndex = 14,
-    })
-    R.pTxt.Parent = pf
+    local cpGrid = Instance.new("UIGridLayout")
+    cpGrid.CellSize = UDim2.new(0, 36, 0, 24)
+    cpGrid.CellPadding = UDim2.new(0, 3, 0, 3)
+    cpGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    cpGrid.Parent = cpScroll
 
-    -- ─── SCAN INFO ───
-    el("TextLabel", {
-        Size = UDim2.new(1, -20, 0, 14),
-        Position = UDim2.new(0, 10, 0, 86),
-        BackgroundTransparency = 1,
-        Text = "🔍 Radius: 50→100→200  ·  Timeout: 5s  ·  Adaptive",
-        TextColor3 = T.TXT_DIM,
-        Font = Enum.Font.Gotham, TextSize = 7,
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 12,
-    }).Parent = panel
+    local cpPadding = Instance.new("UIPadding")
+    cpPadding.PaddingLeft = UDim.new(0, 4)
+    cpPadding.PaddingRight = UDim.new(0, 4)
+    cpPadding.PaddingTop = UDim.new(0, 4)
+    cpPadding.PaddingBottom = UDim.new(0, 4)
+    cpPadding.Parent = cpScroll
 
-    -- ─── CP GRID (scrollable) ───
-    R.cpScroll = el("ScrollingFrame", {
-        Size = UDim2.new(1, -20, 0, 164),
-        Position = UDim2.new(0, 10, 0, 104),
-        BackgroundColor3 = T.BG_DEEP,
-        ScrollBarThickness = 2,
-        ScrollBarImageColor3 = T.BORDER_HI,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        ZIndex = 12, Corner = 6, Stroke = {Color = T.BORDER},
-    })
-    R.cpScroll.Parent = panel
+    State.cpButtons = {}
 
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 38, 0, 26)
-    grid.CellPadding = UDim2.new(0, 3, 0, 3)
-    grid.SortOrder = Enum.SortOrder.LayoutOrder
-    grid.Parent = R.cpScroll
-
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0, 4)
-    pad.PaddingRight = UDim.new(0, 4)
-    pad.PaddingTop = UDim.new(0, 4)
-    pad.PaddingBottom = UDim.new(0, 4)
-    pad.Parent = R.cpScroll
-
-    R.cpBtns = {}
-    for i = 1, #CP do
-        local btn = el("TextButton", {
-            Size = UDim2.new(0, 38, 0, 26),
-            BackgroundColor3 = T.BG_INPUT,
-            Text = "CP" .. i, TextColor3 = T.TXT_DIM,
-            Font = Enum.Font.GothamBold, TextSize = 8,
-            AutoButtonColor = false, ZIndex = 13,
-            Corner = 4, Stroke = {Color = T.BORDER},
-        })
+    for i = 1, #CP_LIST do
+        local btn = Instance.new("TextButton")
         btn.LayoutOrder = i
-        btn.Parent = R.cpScroll
-        table.insert(R.cpBtns, btn)
+        btn.BackgroundColor3 = CONFIG.COLORS.CP_INACTIVE_BG
+        btn.BorderSizePixel = 0
+        btn.Text = "CP" .. i
+        btn.TextColor3 = CONFIG.COLORS.TEXT_DIM
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 8
+        btn.ZIndex = 13
+        btn.AutoButtonColor = false
+        GUI.createCorner(btn, 4)
+        GUI.createStroke(btn, CONFIG.COLORS.BORDER)
+        btn.Parent = cpScroll
 
-        local ci = i
+        table.insert(State.cpButtons, btn)
+
+        local cpIdx = i
         btn.MouseButton1Click:Connect(function()
-            if state.running then return end
-            Nav.runManual(ci, GUI.setStatus, GUI.setProgress, GUI.highlightCP)
+            if State.running then return end
+            Navigator.runGotoCPManual(cpIdx)
         end)
+
         btn.MouseEnter:Connect(function()
-            if state.currentCP ~= ci then
-                btn.BackgroundColor3 = T.BG_CARD
-                btn.UIStroke.Color = T.BORDER_HI
+            if cpIdx ~= State.currentCP then
+                GUI.tweenProperty(btn, "BackgroundColor3", CONFIG.COLORS.CP_HOVER_BG, 0.1)
+                GUI.tweenProperty(btn, "TextColor3", CONFIG.COLORS.TEXT_SECONDARY, 0.1)
             end
         end)
         btn.MouseLeave:Connect(function()
-            if state.currentCP ~= ci then
-                btn.BackgroundColor3 = T.BG_INPUT
-                btn.UIStroke.Color = T.BORDER
+            if cpIdx ~= State.currentCP then
+                GUI.tweenProperty(btn, "BackgroundColor3", CONFIG.COLORS.CP_INACTIVE_BG, 0.1)
+                GUI.tweenProperty(btn, "TextColor3", CONFIG.COLORS.TEXT_DIM, 0.1)
             end
         end)
     end
 
-    grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        R.cpScroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + 8)
-    end)
-
-    -- ─── SEPARATOR ───
-    el("Frame", {
-        Size = UDim2.new(1, -20, 0, 1),
-        Position = UDim2.new(0, 10, 0, 274),
-        BackgroundColor3 = T.BORDER, ZIndex = 12,
-    }).Parent = panel
-
-    -- ─── ANTI-LAG ROW ───
-    local alRow = el("Frame", {
-        Size = UDim2.new(1, -20, 0, 22),
-        Position = UDim2.new(0, 10, 0, 280),
-        BackgroundColor3 = T.BG_INPUT, ZIndex = 12,
-        Corner = 5, Stroke = {Color = T.BORDER},
-    })
+    -- ═══ ANTI-LAG TOGGLE ROW ═══
+    local alY = gridY + gridH + 4
+    local alH = 20
+    local alRow = Instance.new("Frame")
+    alRow.Size = UDim2.new(1, -18, 0, alH)
+    alRow.Position = UDim2.new(0, 9, 0, alY)
+    alRow.BackgroundColor3 = CONFIG.COLORS.CARD
+    alRow.BorderSizePixel = 0
+    alRow.ZIndex = 12
+    GUI.createCorner(alRow, 4)
+    GUI.createStroke(alRow, CONFIG.COLORS.BORDER)
     alRow.Parent = panel
 
-    el("TextLabel", {
-        Size = UDim2.new(0.65, 0, 1, 0),
-        Position = UDim2.new(0, 8, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "◇ ANTI-LAG", TextColor3 = T.TXT_DIM,
-        Font = Enum.Font.GothamBold, TextSize = 8,
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 13,
-    }).Parent = alRow
-
-    local alBtn = el("TextButton", {
-        Size = UDim2.new(0, 36, 0, 16),
-        Position = UDim2.new(1, -42, 0.5, -8),
-        BackgroundColor3 = T.BG_CARD,
-        Text = "ON", TextColor3 = T.NEON_GREEN,
-        Font = Enum.Font.GothamBold, TextSize = 8,
-        AutoButtonColor = false, ZIndex = 13,
-        Corner = 4,
-        Stroke = {Color = T.NEON_GREEN, Transparency = 0.5},
+    GUI.createLabel(alRow, {
+        size = UDim2.new(1, -50, 1, 0),
+        position = UDim2.new(0, 8, 0, 0),
+        text = "ANTI-LAG",
+        color = CONFIG.COLORS.TEXT_DIM,
+        font = Enum.Font.GothamBold,
+        fontSize = 7,
+        zIndex = 13,
     })
+
+    local alBtn = Instance.new("TextButton")
+    alBtn.Size = UDim2.new(0, 36, 0, 14)
+    alBtn.Position = UDim2.new(1, -42, 0.5, -7)
+    alBtn.BackgroundColor3 = CONFIG.COLORS.CARD
+    alBtn.Text = "OFF"
+    alBtn.TextColor3 = CONFIG.COLORS.TEXT_DIM
+    alBtn.Font = Enum.Font.GothamBold
+    alBtn.TextSize = 8
+    alBtn.BorderSizePixel = 0
+    alBtn.ZIndex = 13
+    alBtn.AutoButtonColor = false
+    GUI.createCorner(alBtn, 3)
+    local alStroke = GUI.createStroke(alBtn, CONFIG.COLORS.BORDER)
     alBtn.Parent = alRow
 
-    local alOn = true
     alBtn.MouseButton1Click:Connect(function()
-        alOn = not alOn
-        if alOn then
-            alBtn.Text = "ON"
-            alBtn.TextColor3 = T.NEON_GREEN
-            alBtn.UIStroke.Color = T.NEON_GREEN
-            alBtn.UIStroke.Transparency = 0.5
-            AntiLag.apply()
-        else
-            alBtn.Text = "OFF"
-            alBtn.TextColor3 = T.TXT_DIM
-            alBtn.UIStroke.Color = T.BORDER
-            alBtn.UIStroke.Transparency = 0
-            AntiLag.restore()
-        end
+        local isOn = AntiLag.toggle()
+        alBtn.Text = isOn and "ON" or "OFF"
+        GUI.tweenProperty(alBtn, "TextColor3", isOn and CONFIG.COLORS.SUCCESS or CONFIG.COLORS.TEXT_DIM, 0.1)
+        GUI.tweenProperty(alStroke, "Color", isOn and CONFIG.COLORS.ACCENT_DIM or CONFIG.COLORS.BORDER, 0.1)
     end)
 
-    -- ─── ACTION BUTTONS ───
-    local BY = 308
-    local BH = 34
+    -- ═══ ACTION BUTTONS (y = alY + alH + 4) ═══
+    local btnY = alY + alH + 5
+    local btnH = 34
+    local btnGap = 5
+    local btnPad = 9
+    local availW = CONFIG.GUI_WIDTH - (btnPad * 2) - (btnGap * 2)
 
-    -- STOP
-    local stopBtn = el("TextButton", {
-        Size = UDim2.new(0, 60, 0, BH),
-        Position = UDim2.new(0, 10, 0, BY),
-        BackgroundColor3 = Color3.fromRGB(28, 8, 14),
-        Text = "■ STOP", TextColor3 = T.NEON_RED,
-        Font = Enum.Font.GothamBold, TextSize = 9,
-        AutoButtonColor = false, ZIndex = 12,
-        Corner = 6,
-        Stroke = {Color = Color3.fromRGB(80, 20, 30)},
-    })
+    local stopW = math.floor(availW * 0.22)
+    local claimW = math.floor(availW * 0.30)
+    local startW = availW - stopW - claimW
+
+    local bx = btnPad
+
+    -- STOP Button
+    local stopBtn = Instance.new("TextButton")
+    stopBtn.Size = UDim2.new(0, stopW, 0, btnH)
+    stopBtn.Position = UDim2.new(0, bx, 0, btnY)
+    stopBtn.BackgroundColor3 = CONFIG.COLORS.BTN_STOP_BG
+    stopBtn.Text = "■ STOP"
+    stopBtn.TextColor3 = CONFIG.COLORS.ERROR
+    stopBtn.Font = Enum.Font.GothamBold
+    stopBtn.TextSize = 9
+    stopBtn.BorderSizePixel = 0
+    stopBtn.ZIndex = 12
+    stopBtn.AutoButtonColor = false
+    GUI.createCorner(stopBtn, 7)
+    GUI.createStroke(stopBtn, CONFIG.COLORS.BTN_STOP_BORDER)
     stopBtn.Parent = panel
+    bx = bx + stopW + btnGap
 
     stopBtn.MouseEnter:Connect(function()
-        stopBtn.UIStroke.Color = T.NEON_RED
-        stopBtn.UIStroke.Transparency = 0.4
+        GUI.tweenProperty(stopBtn, "BackgroundColor3", CONFIG.COLORS.BTN_STOP_HOVER, 0.1)
     end)
     stopBtn.MouseLeave:Connect(function()
-        stopBtn.UIStroke.Color = Color3.fromRGB(80, 20, 30)
-        stopBtn.UIStroke.Transparency = 0
+        GUI.tweenProperty(stopBtn, "BackgroundColor3", CONFIG.COLORS.BTN_STOP_BG, 0.1)
     end)
     stopBtn.MouseButton1Click:Connect(function()
-        state.stopped = true
+        State.stopped = true
+        GUI.tweenProperty(stopBtn, "TextColor3", CONFIG.COLORS.WARNING, 0.1)
         stopBtn.Text = "✓"
-        stopBtn.TextColor3 = T.NEON_YELLOW
-        task.delay(1.2, function()
+        task.delay(1.5, function()
             stopBtn.Text = "■ STOP"
-            stopBtn.TextColor3 = T.NEON_RED
+            GUI.tweenProperty(stopBtn, "TextColor3", CONFIG.COLORS.ERROR, 0.1)
         end)
     end)
 
-    -- CLAIM
-    local claimBtn = el("TextButton", {
-        Size = UDim2.new(0, 78, 0, BH),
-        Position = UDim2.new(0, 76, 0, BY),
-        BackgroundColor3 = Color3.fromRGB(8, 18, 38),
-        Text = "⚡ CLAIM", TextColor3 = T.NEON_CYAN,
-        Font = Enum.Font.GothamBold, TextSize = 9,
-        AutoButtonColor = false, ZIndex = 12,
-        Corner = 6,
-        Stroke = {Color = Color3.fromRGB(20, 60, 100)},
-    })
+    -- CLAIM Button
+    local claimBtn = Instance.new("TextButton")
+    claimBtn.Size = UDim2.new(0, claimW, 0, btnH)
+    claimBtn.Position = UDim2.new(0, bx, 0, btnY)
+    claimBtn.BackgroundColor3 = CONFIG.COLORS.BTN_CLAIM_BG
+    claimBtn.Text = "⚡ CLAIM"
+    claimBtn.TextColor3 = CONFIG.COLORS.ACCENT
+    claimBtn.Font = Enum.Font.GothamBold
+    claimBtn.TextSize = 9
+    claimBtn.BorderSizePixel = 0
+    claimBtn.ZIndex = 12
+    claimBtn.AutoButtonColor = false
+    GUI.createCorner(claimBtn, 7)
+    GUI.createStroke(claimBtn, CONFIG.COLORS.BTN_CLAIM_BORDER)
     claimBtn.Parent = panel
+    bx = bx + claimW + btnGap
 
     claimBtn.MouseEnter:Connect(function()
-        claimBtn.UIStroke.Color = T.NEON_CYAN
-        claimBtn.UIStroke.Transparency = 0.4
+        GUI.tweenProperty(claimBtn, "BackgroundColor3", CONFIG.COLORS.BTN_CLAIM_HOVER, 0.1)
     end)
     claimBtn.MouseLeave:Connect(function()
-        claimBtn.UIStroke.Color = Color3.fromRGB(20, 60, 100)
-        claimBtn.UIStroke.Transparency = 0
+        GUI.tweenProperty(claimBtn, "BackgroundColor3", CONFIG.COLORS.BTN_CLAIM_BG, 0.1)
     end)
     claimBtn.MouseButton1Click:Connect(function()
-        if state.running then return end
+        if State.running then return end
         claimBtn.Text = "⏳..."
-        claimBtn.TextColor3 = T.NEON_YELLOW
-        Nav.runClaim(GUI.setStatus, GUI.setProgress)
+        GUI.tweenProperty(claimBtn, "TextColor3", CONFIG.COLORS.WARNING, 0.1)
+
+        Navigator.runClaimOnly()
+
         task.spawn(function()
-            while state.running do task.wait(0.1) end
+            while State.running do task.wait(0.1) end
             task.wait(0.3)
             claimBtn.Text = "⚡ CLAIM"
-            claimBtn.TextColor3 = T.NEON_CYAN
+            GUI.tweenProperty(claimBtn, "TextColor3", CONFIG.COLORS.ACCENT, 0.1)
         end)
     end)
 
-    -- AUTO CP
-    local autoBtn = el("TextButton", {
-        Size = UDim2.new(0, 106, 0, BH),
-        Position = UDim2.new(0, 160, 0, BY),
-        BackgroundColor3 = T.BG_CARD,
-        Text = "▶ AUTO CP", TextColor3 = T.NEON_CYAN,
-        Font = Enum.Font.GothamBold, TextSize = 9,
-        AutoButtonColor = false, ZIndex = 12,
-        Corner = 6,
-        Stroke = {Color = T.NEON_CYAN, Transparency = 0.3},
-    })
-    autoBtn.Parent = panel
+    -- START AUTO Button
+    local startBtn = Instance.new("TextButton")
+    startBtn.Size = UDim2.new(0, startW, 0, btnH)
+    startBtn.Position = UDim2.new(0, bx, 0, btnY)
+    startBtn.BackgroundColor3 = CONFIG.COLORS.BTN_START_BG
+    startBtn.Text = "▶ AUTO CP"
+    startBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    startBtn.Font = Enum.Font.GothamBold
+    startBtn.TextSize = 9
+    startBtn.BorderSizePixel = 0
+    startBtn.ZIndex = 12
+    startBtn.AutoButtonColor = false
+    GUI.createCorner(startBtn, 7)
+    startBtn.Parent = panel
 
-    -- Pulsing animation on stroke
-    local pulsing = true
+    -- Pulsing animation for start button
     task.spawn(function()
-        while sg and sg.Parent do
-            if pulsing then
-                TweenService:Create(autoBtn.UIStroke, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Transparency = 0.8,
+        while screenGui and screenGui.Parent do
+            if State.pulsing then
+                TweenService:Create(startBtn, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    BackgroundColor3 = CONFIG.COLORS.BTN_START_HOVER,
                 }):Play()
-                task.wait(1)
-                if pulsing then
-                    TweenService:Create(autoBtn.UIStroke, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                        Transparency = 0.15,
+                task.wait(1.4)
+                if State.pulsing and screenGui.Parent then
+                    TweenService:Create(startBtn, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                        BackgroundColor3 = CONFIG.COLORS.BTN_START_BG,
                     }):Play()
-                    task.wait(1)
+                    task.wait(1.4)
                 end
             else
                 task.wait(0.3)
@@ -1205,48 +1455,53 @@ function GUI.build()
         end
     end)
 
-    autoBtn.MouseButton1Click:Connect(function()
-        if state.running then return end
-        pulsing = false
-        autoBtn.UIStroke.Transparency = 0
-        autoBtn.UIStroke.Color = T.NEON_YELLOW
-        autoBtn.Text = "▶ RUNNING"
-        autoBtn.TextColor3 = T.NEON_YELLOW
+    startBtn.MouseEnter:Connect(function()
+        if not State.running then
+            State.pulsing = false
+            GUI.tweenProperty(startBtn, "BackgroundColor3", CONFIG.COLORS.BTN_START_HOVER, 0.15)
+        end
+    end)
+    startBtn.MouseLeave:Connect(function()
+        if not State.running then
+            State.pulsing = true
+        end
+    end)
 
-        Nav.runAuto(1, GUI.setStatus, GUI.setProgress, GUI.highlightCP, function()
-            pulsing = true
-        end)
+    startBtn.MouseButton1Click:Connect(function()
+        if State.running then return end
+        State.pulsing = false
+        startBtn.BackgroundColor3 = CONFIG.COLORS.BTN_START_RUNNING
+        startBtn.Text = "▶ RUNNING"
+        GUI.tweenProperty(startBtn, "TextColor3", CONFIG.COLORS.WARNING, 0.15)
+
+        Navigator.runAutoCP(1)
 
         task.spawn(function()
-            while state.running do task.wait(0.1) end
+            while State.running do task.wait(0.1) end
             task.wait(0.3)
-            pulsing = true
-            autoBtn.UIStroke.Color = T.NEON_CYAN
-            autoBtn.Text = "▶ AUTO CP"
-            autoBtn.TextColor3 = T.NEON_CYAN
+            startBtn.Text = "▶ AUTO CP"
+            startBtn.BackgroundColor3 = CONFIG.COLORS.BTN_START_BG
+            GUI.tweenProperty(startBtn, "TextColor3", Color3.fromRGB(255, 255, 255), 0.15)
+            State.pulsing = true
         end)
     end)
 
-    -- ─── PINCH ZOOM ───
-    GUI.setupPinch(container)
-
-    -- ─── F9 TOGGLE ───
-    UIS.InputBegan:Connect(function(inp, gpe)
-        if gpe then return end
-        if inp.KeyCode == Enum.KeyCode.F9 then
+    -- ═══ F9 TOGGLE ═══
+    UIS.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.F9 then
             panel.Visible = not panel.Visible
         end
     end)
 end
 
--- ════════════════════════════════════════════════════════════
--- INIT
--- ════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- INITIALIZATION
+-- ═══════════════════════════════════════════════════════════════
 
 GUI.build()
-task.spawn(function()
-    task.wait(0.5)
-    AntiLag.apply()
-end)
 
-print("Zihan Navigator v6 | Cyber Edition | " .. #CP .. " CP | F9 Toggle")
+print("[Yuhu] Loaded | " .. #CP_LIST .. " CP | Radius: "
+    .. table.concat(CONFIG.SCAN_RADII, ", ") .. "s"
+    .. " | Timeout: " .. CONFIG.SCAN_TIMEOUT .. "s"
+    .. " | F9 toggle")
