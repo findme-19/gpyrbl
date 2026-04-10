@@ -8,8 +8,15 @@ local UIS      = game:GetService("UserInputService")
 local TweenSvc = game:GetService("TweenService")
 local player   = Players.LocalPlayer
 
--- Data Koordinat
-local DATA = {
+-- Clean up previous GUI
+pcall(function()
+    for _,g in ipairs(player.PlayerGui:GetChildren()) do
+        if g.Name=="SakahayangAlfian" then g:Destroy() end
+    end
+end)
+
+-- CONFIG DATA
+local COORDS = {
     [1] = {
         TARGET = Vector3.new(-312.329, 654.005, -952.673),
         NEAR   = Vector3.new(-307.023, 653.096, -957.354)
@@ -20,48 +27,50 @@ local DATA = {
     }
 }
 
-pcall(function()
-    for _,g in ipairs(player.PlayerGui:GetChildren()) do
-        if g.Name=="SakahayangAlfian" then g:Destroy() end
-    end
-end)
+local running = false
 
+-- CYBERPUNK PALETTE
+local CYAN   = Color3.fromRGB(0, 255, 255)
+local NEON_P = Color3.fromRGB(255, 0, 150)
+local GOLD   = Color3.fromRGB(255, 200, 0)
+local BG_MAIN = Color3.fromRGB(10, 10, 15)
+local BG_CARD = Color3.fromRGB(20, 20, 28)
+local LINE   = Color3.fromRGB(40, 40, 55)
+local TEXT_S = Color3.fromRGB(150, 150, 165)
+local WHITE  = Color3.fromRGB(240, 240, 240)
+
+-- FUNCTIONALITIES (ANTI-LAG)
 local function applyAntiLag()
-    pcall(function() settings().Rendering.QualityLevel=Enum.QualityLevel.Level01 end)
-    pcall(function() workspace.GlobalShadows=false end)
     pcall(function()
-        local L=game:GetService("Lighting")
-        for _,v in ipairs(L:GetChildren()) do
-            if v:IsA("PostProcessEffect") or v:IsA("BlurEffect") then v.Enabled=false end
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        workspace.GlobalShadows = false
+        local L = game:GetService("Lighting")
+        L.Brightness = 1
+        for _, v in ipairs(L:GetChildren()) do
+            if v:IsA("PostProcessEffect") then v.Enabled = false end
+        end
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end
+            if v:IsA("ParticleEmitter") then v.Enabled = false end
         end
     end)
 end
 
-local running = false
-local SVl, SDot, ALBtn
-
--- Warna Cyberpunk
-local NEON_BLUE = Color3.fromRGB(0, 255, 255)
-local NEON_PINK = Color3.fromRGB(255, 0, 150)
-local NEON_GREEN = Color3.fromRGB(50, 255, 100)
-local DARK_BG = Color3.fromRGB(10, 10, 15)
-local CARD_BG = Color3.fromRGB(20, 20, 28)
-local GRID_LINE = Color3.fromRGB(40, 40, 60)
-local TEXT_MAIN = Color3.fromRGB(220, 220, 230)
-
+-- STATUS HANDLER
+local SVl, SDot
 local function setStatus(msg, col)
     if not SVl then return end
     SVl.Text = "» " .. msg
-    local c = col == "done" and NEON_GREEN or col == "err" and NEON_PINK or NEON_BLUE
-    SVl.TextColor3 = c
-    if SDot then SDot.BackgroundColor3 = c end
+    SVl.TextColor3 = col or CYAN
+    if SDot then SDot.BackgroundColor3 = col or CYAN end
 end
 
+-- PROXIMITY LOGIC
 local function findPrompt(targetPos)
     for _, v in ipairs(workspace:GetDescendants()) do
         if v:IsA("ProximityPrompt") then
             local p = v.Parent
-            local pos = (p:IsA("BasePart") and p.Position) or (p:IsA("Model") and p.PrimaryPart and p.PrimaryPart.Position)
+            local pos = p:IsA("BasePart") and p.Position or (p:IsA("Model") and p.PrimaryPart and p.PrimaryPart.Position)
             if pos and (pos - targetPos).Magnitude < 100 then
                 return v, p
             end
@@ -73,145 +82,148 @@ end
 local function runSequence(index)
     if running then return end
     running = true
-    local config = DATA[index]
+    local data = COORDS[index]
     
     task.spawn(function()
-        setStatus("INITIATING CP"..index, "wait")
+        setStatus("INITIALIZING...", GOLD)
         local char = player.Character or player.CharacterAdded:Wait()
         local hrp = char:WaitForChild("HumanoidRootPart", 5)
-        if not hrp then setStatus("FAILURE", "err"); running = false; return end
+        if not hrp then setStatus("ERROR: NO HRP", NEON_P); running = false; return end
         
-        hrp.CFrame = CFrame.new(config.NEAR + Vector3.new(0, 3, 0))
+        setStatus("WARPING TO CP " .. index, CYAN)
+        hrp.CFrame = CFrame.new(data.NEAR + Vector3.new(0, 5, 0))
         task.wait(0.5)
-        
-        setStatus("SCANNING OBJECT", "wait")
-        local pr, _ = findPrompt(config.TARGET)
+
+        setStatus("SCANNING OBJECT", GOLD)
+        local pr, obj = findPrompt(data.TARGET)
         
         if pr then
+            setStatus("EXECUTING CLAIM", CYAN)
             fireproximityprompt(pr)
-            setStatus("CP"..index.." CLAIMED", "done")
+            task.wait(0.2)
+            setStatus("ARRIVED & CLAIMED", Color3.fromRGB(0, 255, 100))
         else
-            setStatus("MANUAL CLAIM READY", "done")
+            setStatus("CP " .. index .. " READY", WHITE)
         end
+        
         running = false
     end)
 end
 
--- GUI SETUP
+-- GUI CONSTRUCTION
 local sg = Instance.new("ScreenGui", player.PlayerGui)
 sg.Name = "SakahayangAlfian"; sg.ResetOnSpawn = false; sg.IgnoreGuiInset = true
 
 local F = Instance.new("Frame", sg)
-F.Size = UDim2.new(0, 260, 0, 420)
-F.Position = UDim2.new(0, 20, 0, 100)
-F.BackgroundColor3 = DARK_BG; F.BorderSizePixel = 0; F.Active = true; F.Draggable = true
+F.Size = UDim2.new(0, 280, 0, 400)
+F.Position = UDim2.new(0, 30, 0.5, -200)
+F.BackgroundColor3 = BG_MAIN
+F.BorderSizePixel = 0
+F.Active = true; F.Draggable = true
 Instance.new("UICorner", F).CornerRadius = UDim.new(0, 4)
-local border = Instance.new("UIStroke", F)
-border.Color = GRID_LINE; border.Thickness = 2
+local MainStroke = Instance.new("UIStroke", F)
+MainStroke.Color = LINE; MainStroke.Thickness = 1.5
+
+-- Decor Line
+local DecoLine = Instance.new("Frame", F)
+DecoLine.Size = UDim2.new(1, 0, 0, 2); DecoLine.BackgroundColor3 = CYAN; DecoLine.BorderSizePixel = 0
 
 -- UI HELPERS
-local function mkL(par, txt, col, sz, font, xa)
-    local l = Instance.new("TextLabel", par)
-    l.BackgroundTransparency = 1; l.Text = txt; l.TextColor3 = col or TEXT_MAIN
-    l.Font = font or Enum.Font.Code; l.TextSize = sz or 10
-    l.TextXAlignment = xa or Enum.TextXAlignment.Left
+local function mkDivider(yp)
+    local d = Instance.new("Frame", F)
+    d.Size = UDim2.new(1, -30, 0, 1); d.Position = UDim2.new(0, 15, 0, yp)
+    d.BackgroundColor3 = LINE; d.BorderSizePixel = 0
+end
+
+local function mkLabel(txt, sz, font, col, pos, par)
+    local l = Instance.new("TextLabel", par or F)
+    l.Text = txt; l.TextSize = sz; l.Font = font; l.TextColor3 = col
+    l.Position = pos; l.BackgroundTransparency = 1; l.TextXAlignment = Enum.TextXAlignment.Left
     return l
 end
 
-local function mkLine(yp)
-    local l = Instance.new("Frame", F)
-    l.Size = UDim2.new(1, -20, 0, 1); l.Position = UDim2.new(0, 10, 0, yp)
-    l.BackgroundColor3 = GRID_LINE; l.BorderSizePixel = 0
-end
-
 -- HEADER
-local head = Instance.new("Frame", F)
-head.Size = UDim2.new(1, 0, 0, 40); head.BackgroundColor3 = CARD_BG; head.BorderSizePixel = 0
-mkL(head, " [ AUTO CLAIM GSK CODE ]", NEON_BLUE, 11, Enum.Font.RobotoMono).Position = UDim2.new(0, 10, 0, 0)
+local Head = mkLabel("AUTO CLAIM GSK CODE", 14, Enum.Font.GothamBold, WHITE, UDim2.new(0, 15, 0, 20))
+local CloseBtn = Instance.new("TextButton", F)
+CloseBtn.Size = UDim2.new(0, 25, 0, 25); CloseBtn.Position = UDim2.new(1, -35, 0, 10)
+CloseBtn.Text = "X"; CloseBtn.TextColor3 = TEXT_S; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.BackgroundTransparency = 1
+CloseBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
-local XB = Instance.new("TextButton", head)
-XB.Size = UDim2.new(0, 30, 0, 30); XB.Position = UDim2.new(1, -35, 0.5, -15)
-XB.BackgroundTransparency = 1; XB.Text = "[X]"; XB.TextColor3 = NEON_PINK
-XB.Font = Enum.Font.Code; XB.TextSize = 14
-XB.MouseButton1Click:Connect(function() sg:Destroy() end)
-
-mkLine(40)
+mkDivider(50)
 
 -- BODY
-mkL(F, "SYSTEM STATUS:", TEXT_MAIN, 9).Position = UDim2.new(0, 15, 0, 55)
-local sysActive = mkL(F, "ONLINE", NEON_GREEN, 9, Enum.Font.CodeBold)
-sysActive.Position = UDim2.new(0, 100, 0, 55)
+mkLabel("SYSTEM ACTIVE", 10, Enum.Font.GothamBold, CYAN, UDim2.new(0, 15, 0, 65))
 
--- Status Bar
-local sc = Instance.new("Frame", F)
-sc.Size = UDim2.new(1, -30, 0, 30); sc.Position = UDim2.new(0, 15, 0, 75)
-sc.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-Instance.new("UIStroke", sc).Color = GRID_LINE
-SVl = mkL(sc, "» STANDBY", NEON_BLUE, 10); SVl.Size = UDim2.new(1, -10, 1, 0); SVl.Position = UDim2.new(0, 10, 0, 0)
+-- Status Card
+local StatCard = Instance.new("Frame", F)
+StatCard.Size = UDim2.new(1, -30, 0, 35); StatCard.Position = UDim2.new(0, 15, 0, 85)
+StatCard.BackgroundColor3 = BG_CARD; StatCard.BorderSizePixel = 0
+Instance.new("UICorner", StatCard).CornerRadius = UDim.new(0, 4)
 
-mkLine(120)
+SDot = Instance.new("Frame", StatCard)
+SDot.Size = UDim2.new(0, 4, 0, 15); SDot.Position = UDim2.new(0, 10, 0.5, -7.5)
+SDot.BackgroundColor3 = CYAN; SDot.BorderSizePixel = 0
 
--- Low Graphics Toggle
-local lgFrame = Instance.new("Frame", F)
-lgFrame.Size = UDim2.new(1, -30, 0, 30); lgFrame.Position = UDim2.new(0, 15, 0, 135)
-lgFrame.BackgroundTransparency = 1
-mkL(lgFrame, "OPTIMIZATION MODE", TEXT_MAIN, 9).Position = UDim2.new(0, 0, 0.5, -5)
+SVl = mkLabel("» STANDBY", 11, Enum.Font.Code, WHITE, UDim2.new(0, 22, 0, 0), StatCard)
+SVl.Size = UDim2.new(1, -30, 1, 0)
 
-ALBtn = Instance.new("TextButton", lgFrame)
-ALBtn.Size = UDim2.new(0, 60, 0, 20); ALBtn.Position = UDim2.new(1, -60, 0.5, -10)
-ALBtn.BackgroundColor3 = CARD_BG; ALBtn.Text = "OFF"; ALBtn.TextColor3 = NEON_PINK
-ALBtn.Font = Enum.Font.CodeBold; ALBtn.TextSize = 10
-Instance.new("UIStroke", ALBtn).Color = GRID_LINE
+mkDivider(135)
 
-local lagState = false
-ALBtn.MouseButton1Click:Connect(function()
-    lagState = not lagState
-    ALBtn.Text = lagState and "ON" or "OFF"
-    ALBtn.TextColor3 = lagState and NEON_GREEN or NEON_PINK
-    if lagState then applyAntiLag() end
+-- Low Graphics
+mkLabel("ENVIRONMENT OPTIMIZATION", 9, Enum.Font.GothamBold, TEXT_S, UDim2.new(0, 15, 0, 150))
+local LGBtn = Instance.new("TextButton", F)
+LGBtn.Size = UDim2.new(0, 60, 0, 24); LGBtn.Position = UDim2.new(1, -75, 0, 145)
+LGBtn.BackgroundColor3 = BG_CARD; LGBtn.Text = "ON"; LGBtn.TextColor3 = CYAN
+LGBtn.Font = Enum.Font.GothamBold; LGBtn.TextSize = 10
+Instance.new("UICorner", LGBtn).CornerRadius = UDim.new(0, 4)
+local lgState = true
+LGBtn.MouseButton1Click:Connect(function()
+    lgState = not lgState
+    LGBtn.Text = lgState and "ON" or "OFF"
+    LGBtn.TextColor3 = lgState and CYAN or TEXT_S
+    if lgState then applyAntiLag() end
 end)
 
-mkLine(180)
+mkDivider(185)
 
--- CP BUTTONS
-local btnContainer = Instance.new("Frame", F)
-btnContainer.Size = UDim2.new(1, -30, 0, 50); btnContainer.Position = UDim2.new(0, 15, 0, 200)
-btnContainer.BackgroundTransparency = 1
+-- BUTTONS CP
+mkLabel("TELEPORT PROTOCOL", 9, Enum.Font.GothamBold, TEXT_S, UDim2.new(0, 15, 0, 200))
 
-local function mkCPBtn(idx, xPos)
-    local b = Instance.new("TextButton", btnContainer)
-    b.Size = UDim2.new(0.48, 0, 1, 0); b.Position = UDim2.new(xPos, 0, 0, 0)
-    b.BackgroundColor3 = CARD_BG; b.Text = "EXECUTE CP" .. idx
-    b.TextColor3 = NEON_BLUE; b.Font = Enum.Font.CodeBold; b.TextSize = 10
-    local str = Instance.new("UIStroke", b); str.Color = NEON_BLUE; str.Thickness = 1
+local function mkCPBtn(name, index, pos)
+    local b = Instance.new("TextButton", F)
+    b.Size = UDim2.new(0, 120, 0, 40); b.Position = pos
+    b.BackgroundColor3 = BG_CARD; b.Text = name; b.TextColor3 = WHITE
+    b.Font = Enum.Font.GothamBold; b.TextSize = 11
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+    local s = Instance.new("UIStroke", b); s.Color = LINE
     
-    b.MouseButton1Click:Connect(function() runSequence(idx) end)
+    b.MouseButton1Click:Connect(function()
+        runSequence(index)
+    end)
     
-    b.MouseEnter:Connect(function() b.BackgroundColor3 = NEON_BLUE; b.TextColor3 = DARK_BG end)
-    b.MouseLeave:Connect(function() b.BackgroundColor3 = CARD_BG; b.TextColor3 = NEON_BLUE end)
+    b.MouseEnter:Connect(function() s.Color = CYAN end)
+    b.MouseLeave:Connect(function() s.Color = LINE end)
 end
 
-mkCPBtn(1, 0)
-mkCPBtn(2, 0.52)
+mkCPBtn("CHECKPOINT 1", 1, UDim2.new(0, 15, 0, 220))
+mkCPBtn("CHECKPOINT 2", 2, UDim2.new(0, 145, 0, 220))
 
-mkLine(270)
+mkDivider(280)
 
 -- FOOTER
-local footer = Instance.new("Frame", F)
-footer.Size = UDim2.new(1, 0, 0, 100); footer.Position = UDim2.new(0, 0, 0, 280)
-footer.BackgroundTransparency = 1
+mkLabel("TRANSMISSION", 9, Enum.Font.GothamBold, NEON_P, UDim2.new(0, 15, 0, 295))
+local msg = mkLabel("The world is a stage, but the play is badly cast. Stay glitchy.", 9, Enum.Font.GothamItalic, TEXT_S, UDim2.new(0, 15, 0, 315))
+msg.Size = UDim2.new(1, -30, 0, 30); msg.TextWrapped = true; msg.TextYAlignment = Enum.TextYAlignment.Top
 
-local quote = mkL(footer, "Reality is a code waiting to be rewritten. Don't let the firewall stop you.", Color3.fromRGB(100, 100, 120), 8, Enum.Font.Code, Enum.TextXAlignment.Center)
-quote.Size = UDim2.new(1, -40, 0, 40); quote.Position = UDim2.new(0, 20, 0, 10); quote.TextWrapped = true
+mkDivider(355)
 
-mkLine(380)
-
-local credits = mkL(F, "CREATED BY HURUHARA", NEON_PINK, 8, Enum.Font.CodeBold, Enum.TextXAlignment.Center)
-credits.Size = UDim2.new(1, 0, 0, 20); credits.Position = UDim2.new(0, 0, 1, -25)
+local Creator = mkLabel("CREATED BY HURUHARA", 10, Enum.Font.Code, CYAN, UDim2.new(0, 0, 0, 370))
+Creator.Size = UDim2.new(1, 0, 0, 20); Creator.TextXAlignment = Enum.TextXAlignment.Center
 
 -- Toggle F9
-UIS.InputBegan:Connect(function(i, g)
-    if not g and i.KeyCode == Enum.KeyCode.F9 then F.Visible = not F.Visible end
+UIS.InputBegan:Connect(function(io, gpe)
+    if not gpe and io.KeyCode == Enum.KeyCode.F9 then F.Visible = not F.Visible end
 end)
 
-print("Cyberpunk Script Loaded | Creator: Huruhara")
+applyAntiLag()
+print("GSK CODE LOADED | BY HURUHARA")
